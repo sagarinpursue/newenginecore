@@ -1,0 +1,24 @@
+model LlmStructure {
+  llmStructureId String @id @default(uuid(4)) @db.Uuid
+
+  name         String @db.VarChar()
+  type         String @db.VarChar()
+  memory       String @db.VarChar()
+  framework    String @db.VarChar()
+  memoryDriver String @db.VarChar()
+  memorySize   Int    @db.SmallInt
+
+  userId    String      @db.Uuid
+  user      UserProfile @relation(fields: [userId], references: [userId])
+  accountId String      @db.Uuid
+  account   Account     @relation(fields: [accountId], references: [accountId])
+
+  llmLog                  LlmLog[]
+  llmTask                 LlmTask[]
+  llmStructureSharedToken LlmStructureSharedToken[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("llm_structures")
+}

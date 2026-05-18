@@ -1,0 +1,19 @@
+model LlmRuleset {
+  llmRulesetId String @id @default(uuid(4)) @db.Uuid
+
+  name String @db.VarChar()
+
+  llmTaskId String      @db.Uuid
+  llmTask   LlmTask     @relation(fields: [llmTaskId], references: [llmTaskId])
+  userId    String      @db.Uuid
+  user      UserProfile @relation(fields: [userId], references: [userId])
+  accountId String      @db.Uuid
+  account   Account     @relation(fields: [accountId], references: [accountId])
+
+  llmRule LlmRule[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("llm_rulesets")
+}

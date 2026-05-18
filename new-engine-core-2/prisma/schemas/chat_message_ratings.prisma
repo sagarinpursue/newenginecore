@@ -1,0 +1,21 @@
+model ChatMessageRating {
+  chatMessageRatingId String @id @default(uuid(4)) @db.Uuid
+
+  rating ChatMessageRatingType
+
+  chatMessageId String      @unique @db.Uuid
+  chatMessage   ChatMessage @relation(fields: [chatMessageId], references: [chatMessageId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_message_ratings")
+}
+
+enum ChatMessageRatingType {
+  UPVOTE   @map("upvote")
+  DOWNVOTE @map("downvote")
+  PENDING  @map("pending")
+
+  @@map("chat_message_rating_type")
+}

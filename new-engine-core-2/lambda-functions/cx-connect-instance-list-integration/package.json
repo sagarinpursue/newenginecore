@@ -1,0 +1,19 @@
+{
+  "name": "f2cx-connect-instance-list-integration",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint --fix .",
+    "deploy": "node ../deploy.js",
+    "dev": "LOCAL_RUN_EVENT=base node ../local-run.js"
+  },
+  "author": "Maksim Kropanov <mkropanov@confidenceway.com>",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@shared-modules/f2-middlewares": "file:../_shared-modules/middlewares",
+    "@shared-modules/f2-db-api": "file:../_shared-modules/db-api"
+  }
+}

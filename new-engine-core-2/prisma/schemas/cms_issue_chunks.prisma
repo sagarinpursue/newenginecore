@@ -1,0 +1,13 @@
+model CmsIssueChunk {
+  chunkId String @id @default(uuid(4)) @db.Uuid
+
+  s3Uri      String
+  extChunkId String
+
+  issueId String           @db.Uuid
+  issue   CmsAnalysisIssue @relation(fields: [issueId], references: [issueId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("cms_issue_chunks")
+}

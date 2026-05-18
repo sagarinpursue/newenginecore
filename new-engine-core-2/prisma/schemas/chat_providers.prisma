@@ -1,0 +1,7 @@
+model ChatProvider {
+  id   Int    @id @default(autoincrement())
+  name String
+  Chat Chat[]
+
+  @@map("chat_providers")
+}

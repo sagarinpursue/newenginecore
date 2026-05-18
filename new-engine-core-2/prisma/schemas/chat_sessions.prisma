@@ -1,0 +1,20 @@
+model ChatSession {
+  sessionId            String   @id @default(uuid(4)) @db.Uuid
+  connectionToken      String?
+  isLiveAgentConnected Boolean? @default(false)
+
+  chatId String @db.Uuid
+  chat   Chat   @relation(fields: [chatId], references: [chatId])
+
+  accountId String?  @db.Uuid
+  account   Account? @relation(fields: [accountId], references: [accountId])
+
+  chatConnectContact  ChatConnectContact[]
+  chatMessage         ChatMessage?
+  chatSessionFeedback ChatSessionFeedback?
+  chatSessionRating   ChatSessionRating?
+  chatLiveChatSession ChatLiveChatSession?
+  ChatLiveChatThread  ChatLiveChatThread[]
+
+  @@map("chat_sessions")
+}

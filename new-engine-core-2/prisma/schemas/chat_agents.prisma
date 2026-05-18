@@ -1,0 +1,27 @@
+model ChatAgent {
+  agentId  String @id @default(uuid(4)) @db.Uuid
+  username String @unique
+  password String
+
+  role ChatAgentRoleType @default(USER)
+
+  instanceId String?              @db.Uuid
+  instance   ChatConnectInstance? @relation(fields: [instanceId], references: [instanceId])
+
+  userId    String?      @db.Uuid
+  user      UserProfile? @relation(fields: [userId], references: [userId])
+  accountId String?      @db.Uuid
+  account   Account?     @relation(fields: [accountId], references: [accountId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_agents")
+}
+
+enum ChatAgentRoleType {
+  USER  @map("user")
+  ADMIN @map("admin")
+
+  @@map("chat_agent_role")
+}

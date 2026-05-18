@@ -1,0 +1,24 @@
+{
+    "type": "object",
+    "required": ["body"],
+    "properties": {
+        "body": {
+            "type": "object",
+            "required": ["llmStructureId"],
+            "properties": {
+                "llmStructureId": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "topic": {
+                    "type": "string"
+                },
+                "sessionId": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

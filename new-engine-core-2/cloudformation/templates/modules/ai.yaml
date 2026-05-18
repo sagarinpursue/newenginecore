@@ -1,0 +1,1446 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Gen AI module
+
+Parameters:
+  Environment:
+    Type: String
+  CollectionName:
+    Type: String
+    Default: f2-llm-collection
+  CoreVPC:
+    Type: String
+  PrivateSubnetIds:
+    Type: CommaDelimitedList
+  SecurityGroup:
+    Type: String
+  CoreApi:
+    Type: String
+  ApiGatewayStage:
+    Type: String
+  CoreApiRootResourceId:
+    Type: String
+  PrivateBucketName:
+    Type: String
+
+  LlmDataSourcesFolder:
+    Type: String
+    Default: llm-data-sources
+
+  JwtTokenAuthorizer:
+    Type: String
+  SharedTokenAuthorizer:
+    Type: String
+  DBProxyLambdaArn:
+    Type: String
+  AwsInvokerLambdaArn:
+    Type: String
+
+  LoadBalancerLink:
+    Type: String
+  JwtAuthorizerSecret:
+    Type: String
+  JwtAuthorizerSecretGetPolicy:
+    Type: String
+
+  MigrationDbScriptLambda:
+    Type: String
+  ModuleName:
+    Type: String
+    Default: llm-module
+
+  LambdaRuntime:
+    Type: String
+    Default: nodejs22.x
+  CommonLayer:
+    Type: String
+  ApiGatewayLambdaExecutionRole:
+    Type: String
+  Version:
+    Type: String
+    Default: '1.0.0'
+
+Resources:
+  # =================================================================
+  # 1. Api Gateway Resources
+  # =================================================================
+  AiResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CoreApiRootResourceId
+      PathPart: 'ai'
+
+  LlmDataSourceResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CoreApiRootResourceId
+      PathPart: 'llm-data-source'
+  
+  LlmDataSourceOptionsApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmDataSourceResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,DELETE,PATCH,GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  LlmStructureResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CoreApiRootResourceId
+      PathPart: 'llm-structure'
+
+  LlmStructureOptionsApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmStructureResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,DELETE,GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  LlmStructureProcessingResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref LlmStructureResource
+      PathPart: 'processing'
+
+  LlmStructureProcessingOptionsApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmStructureProcessingResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  SharedResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CoreApiRootResourceId
+      PathPart: 'shared'
+
+  SharedLlmStructureResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref SharedResource
+      PathPart: 'llm-structure'
+
+  SharedLlmStructureProcessingResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref SharedLlmStructureResource
+      PathPart: 'processing'
+
+  SharedLlmStructureProcessingOptionsApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref SharedLlmStructureProcessingResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  LlmRuleResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CoreApiRootResourceId
+      PathPart: 'llm-rule'
+
+  LlmRuleOptionsApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmRuleResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,PATCH,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  LlmStructureSharedTokenResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref LlmStructureResource
+      PathPart: 'shared-token'
+
+  LLlmStructureSharedTokenOptionsApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmStructureSharedTokenResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,DELETE,PATCH,POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  LlmStructureModelResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref LlmStructureResource
+      PathPart: 'model'
+
+  LlmStructureModelListResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref LlmStructureModelResource
+      PathPart: 'list'
+
+  LlmStructureModelListOptionsApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmStructureModelListResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  LlmDataSourceSyncResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref LlmDataSourceResource
+      PathPart: 'sync'
+
+  LlmDataSourceSyncOptionsApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmDataSourceSyncResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  LlmDataSourceSyncStatusResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref LlmDataSourceSyncResource
+      PathPart: 'status'
+
+  LlmDataSourceSyncStatusOptionsApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmDataSourceSyncStatusResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  # =================================================================
+  # 2. LlmDataSourceDelete Lambda
+  # =================================================================
+  LlmDataSourceDeleteLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'f2-llm-data-source-delete-${Environment}'
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Code: ../../lambda-dist/llm-data-source-delete
+      Layers:
+        - !Ref CommonLayer
+      Timeout: 30
+      MemorySize: 512
+      Role: !GetAtt LlmDataSourceDeleteLambdaRole.Arn
+      Environment:
+        Variables:
+          APP_NAME: f2
+          ENV: !Ref Environment
+          DB_API_URL: !Ref LoadBalancerLink
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+
+  LlmDataSourceDeleteApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: DELETE
+      ResourceId: !Ref LlmDataSourceResource
+      RestApiId: !Ref CoreApi
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        Uri: !Sub "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LlmDataSourceDeleteLambda.Arn}/invocations"
+
+  # LlmDataSourceDeleteApiPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !GetAtt LlmDataSourceDeleteLambda.Arn
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/DELETE/llm-data-source'
+
+  LlmDataSourceDeleteLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-llm-data-source-delete-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: F2LlmDataSourceDeletePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: bedrock:DeleteKnowledgeBase
+                Resource: !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*'
+        - PolicyName: !Sub 'f2-ai-datasource-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'aoss:DeleteCollection'
+                  - 'aoss:DeleteAccessPolicy'
+                  - 'aoss:DeleteSecurityPolicy'
+                Resource: '*'
+        - PolicyName: !Sub 'f2-ai-s3vectors-access-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3vectors:DeleteVectorBucket'
+                  - 's3vectors:DeleteIndex'
+                Resource: !Sub 'arn:aws:s3vectors:${AWS::Region}:${AWS::AccountId}:bucket/*'
+
+  # =================================================================
+  # 3. LlmDataSourcePost Lambda
+  # =================================================================
+  LlmDataSourcePostLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'f2-llm-data-source-post-${Environment}'
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Code: ../../lambda-dist/llm-data-source-post
+      Layers:
+        - !Ref CommonLayer
+      Timeout: 30
+      MemorySize: 512
+      Environment:
+        Variables:
+          APP_NAME: f2
+          ENV: !Ref Environment
+          DB_API_URL: !Ref LoadBalancerLink
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+          AI_DATA_SOURCE_CREATOR_LAMBDA_NAME: !Ref AiDataSourceCreatorLambda
+          LLM_DATA_SOURCES_FOLDER: !Ref LlmDataSourcesFolder
+      Role: !GetAtt LlmDataSourcePostLambdaRole.Arn
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+
+  LlmDataSourcePostAPI:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmDataSourceResource
+      HttpMethod: POST
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations'
+          - LambdaArn: !GetAtt LlmDataSourcePostLambda.Arn
+
+  # LlmDataSourcePostLambdaPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !GetAtt LlmDataSourcePostLambda.Arn
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/POST/llm-data-source'
+
+  LlmDataSourcePostLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-llm-data-source-post--lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-ai-invoke-data-source-creator-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt AiDataSourceCreatorLambda.Arn
+        - PolicyName: !Sub 'f2-ai-import-data-source-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:GetKnowledgeBase
+                  - bedrock:ListDataSources
+                  - bedrock:GetDataSource
+                Resource: !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*'
+
+  # =================================================================
+  # 4. LlmStructureProcessingPost Lambda
+  # =================================================================
+  LlmStructureProcessingPostLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'f2-llm-structure-processing-post-${Environment}'
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Code: ../../lambda-dist/llm-structure-processing-post
+      Layers:
+        - !Ref CommonLayer
+      Timeout: 30
+      MemorySize: 512
+      Environment:
+        Variables:
+          APP_NAME: f2
+          ENV: !Ref Environment
+          DB_API_URL: !Ref LoadBalancerLink
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+      Role: !GetAtt LlmStructureProcessingPostLambdaRole.Arn
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+
+  LlmStructureProcessingPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmStructureProcessingResource
+      HttpMethod: POST
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LlmStructureProcessingPostLambda.Arn}/invocations'
+
+  SharedLlmStructureProcessingPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref SharedLlmStructureProcessingResource
+      HttpMethod: POST
+      ApiKeyRequired: true
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref SharedTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LlmStructureProcessingPostLambda.Arn}/invocations'
+
+  # LlmStructureProcessingPostPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !GetAtt LlmStructureProcessingPostLambda.Arn
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/POST/llm-structure/processing'
+
+  # SharedLlmStructureProcessingPostPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !GetAtt LlmStructureProcessingPostLambda.Arn
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/POST/shared/llm-structure/processing'
+
+  LlmStructureProcessingPostLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-llm-structure-processing-post-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-llm-structure-processing-invoke-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt LlmStructureNoFrameworkProcessingLambda.Arn
+
+  # =================================================================
+  # 5. LlmStructureNoFrameworkProcessing Lambda
+  # =================================================================
+  LlmStructureNoFrameworkProcessingLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'f2-llm-structure-no-framework-processing-${Environment}'
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Code: ../../lambda-dist/llm-structure-no-framework-processing
+      Layers:
+        - !Ref CommonLayer
+      Timeout: 30
+      MemorySize: 512
+      Environment:
+        Variables:
+          APP_NAME: f2
+          ENV: !Ref Environment
+          DB_API_URL: !Ref LoadBalancerLink
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+          ACCOUNT_ID: !Ref AWS::AccountId
+          BUCKET_NAME: !Ref PrivateBucketName
+          DATA_SOURCE_FOLDER: !Ref LlmDataSourcesFolder
+      Role: !GetAtt LlmStructureNoFrameworkProcessingLambdaRole.Arn
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+
+  LlmStructureNoFrameworkProcessingLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-llm-structure-no-framework-processing-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-llm-structure-no-framework-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - !Sub 'arn:aws:s3:::${PrivateBucketName}/${LlmDataSourcesFolder}/*'
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:::${PrivateBucketName}'
+              - Effect: Allow
+                Action: bedrock:Retrieve
+                Resource: !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*'
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource: 
+                  - !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*'
+                  - arn:aws:bedrock:*::foundation-model/*
+
+  # =================================================================
+  # 6. LlmStructurePostLambda Lambda
+  # =================================================================
+  LlmStructurePostLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'f2-llm-structure-post-${Environment}'
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Code: ../../lambda-dist/llm-structure-post
+      Environment:
+        Variables:
+          APP_NAME: f2
+          ENV: !Ref Environment
+          DB_API_URL: !Ref LoadBalancerLink
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+      Layers:
+        - !Ref CommonLayer
+      Timeout: 30
+      MemorySize: 512
+      Role: !GetAtt LlmStructurePostLambdaRole.Arn
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+
+  LlmStructurePostLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-llm-structure-post-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+
+  # LlmStructurePostPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !GetAtt LlmStructurePostLambda.Arn
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/POST/llm-structure'
+
+  # =================================================================
+  # 6. Api Gateway Methods
+  # =================================================================
+  LlmDataSourceGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmDataSourceResource
+      HttpMethod: GET
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DBProxyLambdaArn}/invocations'
+
+  LlmDataSourcePatchMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmDataSourceResource
+      HttpMethod: PATCH
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DBProxyLambdaArn}/invocations'
+
+  LlmRuleGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmRuleResource
+      HttpMethod: GET
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DBProxyLambdaArn}/invocations'
+
+  LlmRuleDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmRuleResource
+      HttpMethod: DELETE
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DBProxyLambdaArn}/invocations'
+
+  LlmRulePatchMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmRuleResource
+      HttpMethod: PATCH
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DBProxyLambdaArn}/invocations'
+
+  LlmRulePostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmRuleResource
+      HttpMethod: POST
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DBProxyLambdaArn}/invocations'
+
+  LlmStructureDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmStructureResource
+      HttpMethod: DELETE
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DBProxyLambdaArn}/invocations'
+
+  LlmStructurePostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmStructureResource
+      HttpMethod: POST
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LlmStructurePostLambda.Arn}/invocations'
+
+  LlmStructureGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmStructureResource
+      HttpMethod: GET
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DBProxyLambdaArn}/invocations'
+
+  LlmStructureSharedTokenGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmStructureSharedTokenResource
+      HttpMethod: GET
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DBProxyLambdaArn}/invocations'
+
+  LlmStructureSharedTokenPatchMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmStructureSharedTokenResource
+      HttpMethod: PATCH
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DBProxyLambdaArn}/invocations'
+
+  LlmStructureSharedTokenPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmStructureSharedTokenResource
+      HttpMethod: POST
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DBProxyLambdaArn}/invocations'
+
+  LlmStructureSharedTokenDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmStructureSharedTokenResource
+      HttpMethod: DELETE
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DBProxyLambdaArn}/invocations'
+
+  LlmStructureModelListGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmStructureModelListResource
+      HttpMethod: GET
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AiStructureModelListGetLambda.Arn}/invocations'
+
+  LlmDataSourceSyncPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmDataSourceSyncResource
+      HttpMethod: POST
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AwsInvokerLambdaArn}/invocations'
+
+  LlmDataSourceSyncStatusGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LlmDataSourceSyncStatusResource
+      HttpMethod: GET
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AwsInvokerLambdaArn}/invocations'
+
+  # =================================================================
+  # 7. Lambda Invoke Permissions
+  # =================================================================
+  # TODO: Do add invoke permissions for all lambda functions or use Role for AWS API Gateway?
+  # LlmDataSourceGetPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref DBProxyLambdaArn
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/GET/llm-data-source'
+
+  # LlmDataSourcePatchPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref DBProxyLambdaArn
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/PATCH/llm-data-source'
+
+  # LlmRuleGetPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref DBProxyLambdaArn
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/GET/llm-rule'
+
+  # LlmRuleDeletePermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref DBProxyLambdaArn
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/DELETE/llm-rule'
+
+  # LlmRulePatchPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref DBProxyLambdaArn
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/PATCH/llm-rule'
+
+  # LlmRulePutPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref DBProxyLambdaArn
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/PUT/llm-rule'
+
+  # LlmStructureDeletePermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref DBProxyLambdaArn
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/DELETE/llm-structure'
+
+  # LlmStructureGetPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref DBProxyLambdaArn
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/GET/llm-structure'
+
+  # LlmStructureSharedTokenGetPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref DBProxyLambdaArn
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/GET/llm-structure/shared-token'
+
+  # LlmStructureSharedTokenPatchPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref DBProxyLambdaArn
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/PATCH/llm-structure/shared-token'
+
+  # LlmStructureSharedTokenPostPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref DBProxyLambdaArn
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/POST/llm-structure/shared-token'
+
+  # LlmStructureSharedTokenDeletePermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref DBProxyLambdaArn
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/DELETE/llm-structure/shared-token'
+
+  # LlmStructureModelListGetPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref AwsInvokerLambdaArn
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/GET/llm-structure/model/list'
+
+  # LlmDataSourceSyncPostPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref AwsInvokerLambdaArn
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/POST/llm-data-source/sync'
+
+  # LlmDataSourceSyncStatusGetPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref AwsInvokerLambdaArn
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/GET/llm-data-source/sync/status'
+
+  # =================================================================
+  # 8. IAM Roles
+  # =================================================================
+  BedrockExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub BedRock-f2-knowledge-base-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: BedrockExecutionRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/*
+              - Effect: Allow
+                Action: aoss:APIAccessAll
+                Resource: !Sub arn:${AWS::Partition}:aoss:${AWS::Region}:${AWS::AccountId}:collection/*
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub arn:${AWS::Partition}:s3:::${PrivateBucketName}
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${PrivateBucketName}/${LlmDataSourcesFolder}/*
+              - Effect: Allow
+                Action:
+                  - s3vectors:CreateVectorBucket
+                  - s3vectors:CreateIndex
+                  - s3vectors:GetIndex
+                  - s3vectors:QueryVectors
+                  - s3vectors:PutVectors
+                  - s3vectors:GetVectors
+                  - s3vectors:DeleteVectors
+                Resource: !Sub arn:${AWS::Partition}:s3vectors:${AWS::Region}:${AWS::AccountId}:bucket/*
+
+  # =================================================================
+  # 9. Migration DB data for GA module
+  # =================================================================
+  MigrationScriptDbDateTrigger:
+    Type: Custom::MigrationScriptTrigger
+    Properties:
+      ServiceTimeout: 70
+      ServiceToken: !Ref MigrationDbScriptLambda
+      module: !Ref ModuleName
+      Version: !Ref Version
+
+  # =================================================================
+  # 11. Policy to access invoke lambdas from API Gateway
+  # =================================================================
+  AiModuleLambdaInvokePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: AiModuleLambdaInvokeManagedPolicy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+            Resource: 
+              - !GetAtt LlmDataSourceDeleteLambda.Arn
+              - !GetAtt LlmDataSourcePostLambda.Arn
+              - !GetAtt LlmStructureProcessingPostLambda.Arn
+              - !GetAtt LlmStructureNoFrameworkProcessingLambda.Arn
+              - !GetAtt LlmStructurePostLambda.Arn
+              - !GetAtt AiStructureModelListGetLambda.Arn
+      Roles: 
+        - !Sub 
+          - "${RoleName}"
+          - RoleName: 
+              !Select [ 1, !Split [ "/", !Ref ApiGatewayLambdaExecutionRole ] ]
+
+  # =================================================================
+  # 12. LlmStructurePostLambda Lambda
+  # =================================================================
+  AiDataSourceCreatorLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'f2-ai-data-source-creator-${Environment}'
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Code: ../../lambda-dist/ai-data-source-creator
+      Environment:
+        Variables:
+          APP_NAME: f2
+          ENV: !Ref Environment
+          ACCOUNT_ID: !Ref AWS::AccountId
+          DB_API_URL: !Ref LoadBalancerLink
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+          BEDROCK_KNOWLEDGE_BASE_ROLE_ARN: !GetAtt BedrockExecutionRole.Arn
+          LAMBDA_DATA_SOURCE_ROLE_ARN: !GetAtt AiDataSourceCreatorLambdaRole.Arn
+          BUCKET_ARN: !Sub "arn:${AWS::Partition}:s3:::${PrivateBucketName}"
+          LLM_DATA_SOURCES_FOLDER: !Ref LlmDataSourcesFolder
+      Layers:
+        - !Ref CommonLayer
+      Timeout: 900
+      MemorySize: 512
+      Role: !GetAtt AiDataSourceCreatorLambdaRole.Arn
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+
+  AiDataSourceCreatorLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-ai-data-source-creator-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-llm-data-source-post-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:DeleteKnowledgeBase
+                  - bedrock:CreateKnowledgeBase
+                  - bedrock:CreateDataSource
+                Resource: !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*'
+        - PolicyName: !Sub 'f2-ai-datasource-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'aoss:CreateAccessPolicy'
+                  - 'aoss:CreateSecurityPolicy'
+                  - 'aoss:CreateCollection'
+                  - 'aoss:BatchGetCollection'
+                  - 'aoss:DeleteCollection'
+                  - 'aoss:DeleteAccessPolicy'
+                  - 'aoss:DeleteSecurityPolicy'
+                  - 'aoss:CreateIndex'
+                Resource: '*'
+        - PolicyName: !Sub 'f2-ai-dataSource-access-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'aoss:APIAccessAll'
+                Resource: !Sub 'arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/*'
+        - PolicyName: !Sub 'f2-ai-iam-pass-role-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'iam:PassRole'
+                Resource:  !GetAtt BedrockExecutionRole.Arn
+        - PolicyName: !Sub 'f2-ai-s3vectors-access-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3vectors:CreateVectorBucket'
+                  - 's3vectors:CreateIndex'
+                Resource: !Sub 'arn:aws:s3vectors:${AWS::Region}:${AWS::AccountId}:bucket/*'
+
+  # =================================================================
+  # 13. Develop API Key and Usage plan
+  # =================================================================
+  DevelopmentApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    Properties:
+      Enabled: true
+      Name: !Sub 'f2-ai-development-team-api-key-${Environment}'
+
+  DevelopmentUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      UsagePlanName: !Sub 'f2-ai-development-team-usage-plan-${Environment}'
+      Description: !Sub 'Used by f2 development team in ${Environment}'
+      ApiStages:
+        - ApiId: !Ref CoreApi
+          Stage: !Ref ApiGatewayStage
+      Quota:
+        Limit: 1000
+        Period: MONTH
+      Throttle:
+        BurstLimit: 20
+        RateLimit: 10
+
+  DevelopmentUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyType: API_KEY
+      KeyId: !Ref DevelopmentApiKey
+      UsagePlanId: !Ref DevelopmentUsagePlan
+
+  # =================================================================
+  # 14. Develop API Key and Usage plan
+  # =================================================================
+  AiStructureModelListGetLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'f2-llm-structure-model-list-get-${Environment}'
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Code: ../../lambda-dist/llm-structure-model-list-get
+      Layers:
+        - !Ref CommonLayer
+      Timeout: 30
+      MemorySize: 512
+      Environment:
+        Variables:
+          APP_NAME: f2
+          ENV: !Ref Environment
+      Role: !GetAtt AiStructureModelListGetLambdaRole.Arn
+  
+  AiStructureModelListGetLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-llm-structure-model-list-get-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: BedrockExecutionRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - bedrock:ListFoundationModels
+                  - bedrock:ListInferenceProfiles
+                Resource: "*"
+
+  # =================================================================
+  # 14. Outputs
+  # =================================================================
+Outputs:
+  ApiMethods:
+    Description: "The list of API methods"
+    Value: !Join
+      - ','
+      - - !Ref LlmDataSourceDeleteApiMethod
+        - !Ref LlmDataSourcePostAPI
+        - !Ref LlmStructureProcessingPostMethod
+        - !Ref SharedLlmStructureProcessingPostMethod
+        - !Ref LlmDataSourceGetMethod
+        - !Ref LlmDataSourcePatchMethod
+        - !Ref LlmRuleGetMethod
+        - !Ref LlmRuleDeleteMethod
+        - !Ref LlmRulePatchMethod
+        - !Ref LlmStructureDeleteMethod
+        - !Ref LlmStructureGetMethod
+        - !Ref LlmStructureSharedTokenGetMethod
+        - !Ref LlmStructureSharedTokenPatchMethod
+        - !Ref LlmStructureSharedTokenPostMethod
+        - !Ref LlmStructureSharedTokenDeleteMethod
+        - !Ref LlmStructureModelListGetMethod
+        - !Ref LlmDataSourceSyncPostMethod
+        - !Ref LlmDataSourceSyncStatusGetMethod
+        - !Ref LlmStructureOptionsApiMethod
+        - !Ref LlmDataSourceOptionsApiMethod
+        - !Ref LlmStructureProcessingOptionsApiMethod
+        - !Ref SharedLlmStructureProcessingOptionsApiMethod
+        - !Ref LlmRuleOptionsApiMethod
+        - !Ref LLlmStructureSharedTokenOptionsApiMethod
+        - !Ref LlmStructureModelListOptionsApiMethod
+        - !Ref LlmDataSourceSyncOptionsApiMethod
+        - !Ref LlmDataSourceSyncStatusOptionsApiMethod
+  ModuleName:
+    Value: !Ref ModuleName
+

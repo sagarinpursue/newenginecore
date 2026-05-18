@@ -1,0 +1,16 @@
+model ChatMessageReport {
+  chatMessageReportId String @id @default(uuid(4)) @db.Uuid
+
+  reportReason  String
+  reportDetails String?
+  reportStatus  String
+
+  chatMessageId String      @unique @db.Uuid
+  chatMessage   ChatMessage @relation(fields: [chatMessageId], references: [chatMessageId])
+
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_message_reports")
+}

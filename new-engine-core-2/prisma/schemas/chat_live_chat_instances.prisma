@@ -1,0 +1,10 @@
+model ChatLiveChatInstance {
+  clientId       String @id
+  organisationId String @db.Uuid
+  accountId      String @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_live_chat_instances")
+}

@@ -1,0 +1,18 @@
+model ChatAiAgent {
+  aiAgentId String @id @default(uuid(4)) @db.Uuid
+
+  agentId      String
+  agentAliasId String
+
+  userId    String?      @db.Uuid
+  user      UserProfile? @relation(fields: [userId], references: [userId])
+  accountId String?      @db.Uuid
+  account   Account?     @relation(fields: [accountId], references: [accountId])
+
+  chat Chat[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_ai_agents")
+}

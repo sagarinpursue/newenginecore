@@ -1,0 +1,38 @@
+model ChatMessage {
+  chatMessageId String @id @default(uuid(4)) @db.Uuid
+
+  content     String
+  source      ChatMessageSourceType
+  messageType ChatMessageType
+
+  sessionId String      @unique @db.Uuid
+  session   ChatSession @relation(fields: [sessionId], references: [sessionId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  chatMessageFeedback ChatMessageFeedback?
+  chatMessageRating   ChatMessageRating?
+  chatMessageReport   ChatMessageReport?
+
+  @@map("chat_messages")
+}
+
+enum ChatMessageSourceType {
+  CLIENT     @map("client")
+  LEX        @map("lex")
+  AI_AGENT   @map("ai-agent")
+  LIVE_AGENT @map("live-agent")
+  SYSTEM     @map("system")
+
+  @@map("chat_message_source_type")
+}
+
+enum ChatMessageType {
+  TEXT  @map("text")
+  AUDIO @map("audio")
+  IMAGE @map("image")
+  FILE  @map("file")
+
+  @@map("chat_message_type")
+}

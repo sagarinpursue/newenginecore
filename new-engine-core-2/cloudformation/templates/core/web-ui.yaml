@@ -1,0 +1,196 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Web UI for F2 platform
+
+Parameters:
+  Environment:
+    Type: String
+  Version:
+    Type: String
+    Default: '1.0.0'
+  PrivateBucketName:
+    Type: String
+    Description: Name existing private bucket.
+  PortalFolder:
+    Type: String
+    Default: web-ui
+  WidgetFolder:
+    Type: String
+    Default: widget
+  SwaggerFolder:
+    Type: String
+    Default: swagger
+
+Resources:
+  # =================================================================
+  # CloudFront OAC
+  # =================================================================
+  PortalOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: F2PortalOac
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  SwaggerOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: F2SwaggerOac
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # =================================================================
+  # CloudFront Custom Policy
+  # =================================================================
+  F2PortalResponseHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Comment: !Sub 'F2 Platform Portal Response Headers Policy ${Environment}'
+        Name: !Sub 'f2-core-portal-response-headers-policy-${Environment}'
+        SecurityHeadersConfig:
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: 31536000
+            IncludeSubdomains: true
+            Preload: false
+            Override: false
+          ContentTypeOptions:
+            Override: true
+          FrameOptions:
+            FrameOption: SAMEORIGIN
+            Override: true
+          ReferrerPolicy:
+            ReferrerPolicy: strict-origin-when-cross-origin
+            Override: true
+          ContentSecurityPolicy:
+            ContentSecurityPolicy: "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self'; font-src 'self' https://fonts.gstatic.com; manifest-src 'self'; connect-src 'self' https:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';  frame-ancestors 'none'; upgrade-insecure-requests; require-trusted-types-for 'script';"
+            Override: false
+        RemoveHeadersConfig:
+          Items:
+            - Header: Server
+
+  # =================================================================
+  # S3 Bucket Policy
+  # =================================================================
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref PrivateBucketName
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowPortalCloudFrontAccess
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub arn:aws:s3:::${PrivateBucketName}/${PortalFolder}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${DistributionF2Portal}
+          # TODO: It is necessary to choose the best solution for Swagger
+          # - Sid: AllowSwaggerCloudFrontAccess
+          #   Effect: Allow
+          #   Principal:
+          #     Service: cloudfront.amazonaws.com
+          #   Action: s3:GetObject
+          #   Resource: !Sub arn:aws:s3:::${PrivateBucketName}/${SwaggerFolder}/*
+          #   Condition:
+          #     StringEquals:
+          #       AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${DistributionSwagger}
+
+  # =================================================================
+  # 3. CloudFront Distributions
+  # =================================================================
+  DistributionF2Portal:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub "F2 Portal ${Environment}"
+        Enabled: true
+        DefaultRootObject: index.html
+        Origins:
+          - Id: S3OriginF2Portal
+            DomainName: !Sub "${PrivateBucketName}.s3.${AWS::Region}.amazonaws.com"
+            OriginPath: !Sub /${PortalFolder}
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+            OriginAccessControlId: !Ref PortalOAC
+        DefaultCacheBehavior:
+          TargetOriginId: S3OriginF2Portal
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          # * CachingOptimized https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-managed-cache-policies.html#managed-cache-caching-optimized
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          # * CORS-S3Origin https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-managed-origin-request-policies.html#managed-origin-request-policy-cors-s3
+          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf
+          ResponseHeadersPolicyId: !GetAtt F2PortalResponseHeadersPolicy.Id
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          ForwardedValues:
+            QueryString: false
+        HttpVersion: http2
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponsePagePath: /index.html
+            ResponseCode: 200
+            ErrorCachingMinTTL: 10
+          - ErrorCode: 404
+            ResponsePagePath: /index.html
+            ResponseCode: 200
+            ErrorCachingMinTTL: 10
+
+  # TODO: It is necessary to choose the best solution for Swagger
+  # DistributionSwagger:
+  #   Type: AWS::CloudFront::Distribution
+  #   Properties:
+  #     DistributionConfig:
+  #       Comment: F2 Swagger
+  #       Enabled: true
+  #       DefaultRootObject: index.html
+  #       Origins:
+  #         - Id: S3OriginSwagger
+  #           DomainName: !Sub "${PrivateBucketName}.s3.${AWS::Region}.amazonaws.com"
+  #           OriginPath: !Sub /${SwaggerFolder}
+  #           S3OriginConfig:
+  #             OriginAccessIdentity: ""
+  #           OriginAccessControlId: !Ref SwaggerOAC
+  #       DefaultCacheBehavior:
+  #         TargetOriginId: S3OriginSwagger
+  #         ViewerProtocolPolicy: redirect-to-https
+  #         AllowedMethods: [ GET, HEAD ]
+  #         CachedMethods: [ GET, HEAD ]
+  #         Compress: true
+  #         ForwardedValues:
+  #           QueryString: false
+  #       HttpVersion: http2
+  #       CustomErrorResponses:
+  #         - ErrorCode: 403
+  #           ResponsePagePath: /index.html
+  #           ResponseCode: 200
+  #           ErrorCachingMinTTL: 10
+  #         - ErrorCode: 404
+  #           ResponsePagePath: /index.html
+  #           ResponseCode: 200
+  #           ErrorCachingMinTTL: 10
+
+  # =================================================================
+  # Outputs
+  # =================================================================
+Outputs:
+  CloudFrontPortalDomain:
+    Value: !GetAtt DistributionF2Portal.DomainName
+    Description: Domain name of Portal CloudFront
+  DistributionF2PortalId:
+    Description: Distribution Id of Portal CloudFront
+    Value: !Ref DistributionF2Portal
+  # TODO: It is necessary to choose the best solution for Swagger
+  # CloudFrontSwaggerDomain:
+  #   Value: !GetAtt DistributionSwagger.DomainName
+  #   Description: Domain name of Swagger CloudFront
+  # CloudFrontSwaggerDistributionId:
+  #   Value: !GetAtt DistributionSwagger.Id
+  #   Description: Distribution Id of Swagger CloudFront

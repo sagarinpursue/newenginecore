@@ -1,0 +1,17 @@
+{
+    "name": "f2ce-websocket-init",
+    "version": "1.0.0",
+    "description": "WebSocket auth token generator",
+    "main": "index.js",
+    "type": "module",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "lint": "eslint --fix .",
+        "deploy": "node ../deploy.js"
+    },
+    "author": "Kartikeya Joshi <kjoshi@confidenceway.com>",
+    "license": "ISC",
+    "dependencies": {
+        "@shared-modules/f2-middlewares": "file:../_shared-modules/middlewares"
+    }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "cms-chunk-duplicate-conflict-detector",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint --fix .",
+    "deploy": "node ../deploy.js",
+    "local-run": "LOCAL_RUN_EVENT=base node ../local-run.js"
+  },
+  "author": "Maksim Kropanov <mkropanov@confidenceway.com>",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@middy/core": "^6.1.6",
+    "@middy/http-json-body-parser": "^6.1.6",
+    "@middy/validator": "^6.1.6",
+    "ajv": "^8.17.1",
+    "ajv-errors": "^3.0.0",
+    "ajv-formats": "^3.0.1",
+    "http-errors": "^2.0.0"
+  },
+  "devDependencies": {
+    "@shared-modules/f2-middlewares": "file:../_shared-modules/middlewares",
+    "@shared-modules/f2-db-api": "file:../_shared-modules/db-api"
+  }
+}

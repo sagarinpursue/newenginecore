@@ -1,0 +1,25 @@
+model Account {
+  accountId       String  @id @default(uuid(4)) @db.Uuid
+  accountNameEn   String?
+  accountNameAr   String?
+  accountCode     String  @unique
+  emailToReminder String?
+
+  userProfile         UserProfile[]
+  chatAgent           ChatAgent[]
+  chatConnectInstance ChatConnectInstance[]
+  chatAiAgent         ChatAiAgent[]
+  chatChannel         ChatChannel[]
+  chatBot             ChatBot[]
+  chatSession         ChatSession[]
+  chat                Chat[]
+  LlmDataSource       LlmDataSource[]
+  LlmPromptDriver     LlmPromptDriver[]
+  LlmQueryEngine      LlmQueryEngine[]
+  LlmRule             LlmRule[]
+  LlmRuleset          LlmRuleset[]
+  LlmStructure        LlmStructure[]
+  LlmTask             LlmTask[]
+
+  @@map("accounts")
+}

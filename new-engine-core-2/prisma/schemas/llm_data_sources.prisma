@@ -1,0 +1,33 @@
+model LlmDataSource {
+  llmDataSourceId String @id @default(uuid(4)) @db.Uuid
+
+  name             String @db.VarChar()
+  url              String @db.VarChar()
+  chunkSize        Int    @db.SmallInt
+  embeddingsModel  String @db.VarChar()
+  knowledgeBaseId  String @db.VarChar()
+  dataSourceId     String @db.VarChar()
+  ingestionJobId   String @db.VarChar()
+  chunkingStrategy String @db.VarChar()
+  opensearchIndex  String @db.VarChar()
+  s3Folder         String @db.VarChar()
+
+  type llmDataSourceType
+
+  userId    String      @db.Uuid
+  user      UserProfile @relation(fields: [userId], references: [userId])
+  accountId String      @db.Uuid
+  account   Account     @relation(fields: [accountId], references: [accountId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("llm_data_sources")
+}
+
+enum llmDataSourceType {
+  S3  @map("S3")
+  WEB @map("WEB")
+
+  @@map("llm_data_source_type")
+}

@@ -1,0 +1,17 @@
+{
+    "name": "f2ce-rotation-livechat-token",
+    "version": "1.0.0",
+    "description": "The lambda function to handle rotation of agent access token for LiveChat in Secrets Manager",
+    "main": "index.js",
+    "type": "module",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "lint": "eslint --fix .",
+        "deploy": "node ../deploy.js"
+    },
+    "author": "Maksim Kropanov <mkropanov@confidenceway.com>",
+    "license": "ISC",
+    "dependencies": {
+        "@shared-modules/f2-utils": "file:../_shared-modules/utils"
+    }
+}

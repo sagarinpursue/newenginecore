@@ -1,0 +1,18 @@
+{
+    "name": "create-admin-user",
+    "version": "1.0.0",
+    "main": "index.js",
+    "type": "module",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "lint": "eslint --fix .",
+        "deploy": "node ../../deploy.js",
+        "start": "set -a && . ../../../.environment/dev/.env && node test.js"
+    },
+    "license": "ISC",
+    "author": "Artem Strogalev <astrogalev@confidenceway.com>",
+    "dependencies": {
+        "@shared-modules/f2-db-api": "file:../../_shared-modules/db-api",
+        "@shared-modules/f2-middlewares": "file:../../_shared-modules/middlewares"
+    }
+}

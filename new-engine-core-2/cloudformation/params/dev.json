@@ -1,0 +1,58 @@
+[
+    {
+        "ParameterKey": "DeploymentMethod",
+        "ParameterValue": "cli"
+    },
+    {
+        "ParameterKey": "Environment",
+        "ParameterValue": "dev"
+    },
+    {
+        "ParameterKey": "ExistingVpc",
+        "ParameterValue": ""
+    },
+    {
+        "ParameterKey": "SubnetsToRDS",
+        "ParameterValue": ""
+    },
+    {
+        "ParameterKey": "SubnetsToEC2",
+        "ParameterValue": ""
+    },
+    {
+        "ParameterKey": "SubnetsToLambda",
+        "ParameterValue": ""
+    },
+    {
+        "ParameterKey": "StageName",
+        "ParameterValue": "f2-api"
+    },
+    {
+        "ParameterKey": "DeployRdsStack",
+        "ParameterValue": "false"
+    },
+    {
+        "ParameterKey": "DeployEc2Stack",
+        "ParameterValue": "false"
+    },
+    {
+        "ParameterKey": "DeployWebUi",
+        "ParameterValue": "false"
+    },
+    {
+        "ParameterKey": "DeployWaf",
+        "ParameterValue": "false"
+    },
+    {
+        "ParameterKey": "DeployCxStack",
+        "ParameterValue": "false"
+    },
+    {
+        "ParameterKey": "DeployGaStack",
+        "ParameterValue": "false"
+    },
+    {
+        "ParameterKey": "DeployDashStack",
+        "ParameterValue": "false"
+    }
+]

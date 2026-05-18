@@ -1,0 +1,87 @@
+{
+    "type": "object",
+    "required": ["headers", "body"],
+    "properties": {
+        "headers": {
+            "type": "object",
+            "required": ["Authorization"],
+            "properties": {
+                "Authorization": {
+                    "type": "string"
+                }
+            }
+        },
+        "body": {
+            "type": "object",
+            "required": ["name", "type", "model", "sourceId", "sourceType", "framework"],
+            "properties": {
+                "llmStructureId": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "llmPromptDriverId": {
+                    "type": "string"
+                },
+                "llmRulesetId": {
+                    "type": "string"
+                },
+                "llmQueryEngineId": {
+                    "type": "string"
+                },
+                "llmTaskId": {
+                    "type": "string"
+                },
+                "topP": {
+                    "type": "number"
+                },
+                "topN": {
+                    "type": "number"
+                },
+                "temperature": {
+                    "type": "number"
+                },
+                "isHybridSearch": {
+                    "type": "boolean"
+                },
+                "isRagApi": {
+                    "type": "boolean"
+                },
+                "embeddingDriver": {
+                    "type": "string"
+                },
+                "sourceId": {
+                    "type": "string"
+                },
+                "sourceType": {
+                    "type": "string"
+                },
+                "assistantAppendix": {
+                    "type": "string"
+                },
+                "preamble": {
+                    "type": "string"
+                },
+                "framework": {
+                    "type": "string"
+                },
+                "memory": {
+                    "type": "string"
+                },
+                "memorySize": {
+                    "type": "number"
+                },
+                "memoryDriver": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

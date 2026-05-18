@@ -1,0 +1,20 @@
+{
+    "name": "cx-ai-agent-put",
+    "version": "1.0.0",
+    "description": "Update AI Agent for CX",
+    "main": "index.js",
+    "type": "module",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "lint": "eslint --fix .",
+        "deploy": "node ../deploy.js",
+        "local-run": "NODE_OPTIONS=--preserve-symlinks LOCAL_RUN_EVENT=deploy node ../local-run.js"
+    },
+    "author": "Vadim Emelin <vemelin@confidenceway.com>",
+    "license": "ISC",
+    "dependencies": {
+        "@shared-modules/f2-middlewares": "file:../_shared-modules/middlewares",
+        "@shared-modules/f2-db-api": "file:../_shared-modules/db-api",
+        "@shared-modules/f2-clients": "file:../_shared-modules/clients"
+    }
+}

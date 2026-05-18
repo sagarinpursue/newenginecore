@@ -1,0 +1,18 @@
+{
+    "name": "f2-initial-scripts-prepare-ec2-config",
+    "version": "1.0.0",
+    "description": "Prepare EC2 config",
+    "main": "index.js",
+    "type": "module",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "lint": "eslint --fix .",
+        "deploy": "node ../deploy.js",
+        "local-run": "REGION='us-east-2' PROFILE='f2-dev' JWT_AUTHORIZER_SECRET='jwt' PRIVATE_BUCKET_NAME='f2-bucket-951bb7982507d4863117e86a91e510f8-dev' node test.js"
+    },
+    "author": "Artem Strogalev <astrogalev@confidenceway.com>",
+    "license": "ISC",
+    "dependencies": {
+        "@shared-modules/f2-middlewares": "file:../../_shared-modules/middlewares"
+    }
+}

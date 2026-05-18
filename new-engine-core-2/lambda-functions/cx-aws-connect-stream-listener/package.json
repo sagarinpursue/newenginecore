@@ -1,0 +1,20 @@
+{
+  "name": "f2ce-aws-connect-stream-listener",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint --fix .",
+    "deploy": "node ../deploy.js",
+    "local-run": "LOCAL_RUN_EVENT=base node ../local-run.js"
+  },
+  "author": "Maksim Kropanov <mkropanov@confidenceway.com>",
+  "license": "ISC",
+  "description": "Listen to messages stream from any connection of the aws connect",
+  "dependencies": {
+    "@shared-modules/f2-middlewares": "file:../_shared-modules/middlewares",
+    "@shared-modules/f2-db-api": "file:../_shared-modules/db-api",
+    "@shared-modules/f2-utils": "file:../_shared-modules/utils"
+  }
+}

@@ -1,0 +1,8 @@
+export default {
+    headers: {
+        Authorization: `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1MDJlMTIzMC04MmIwLTQ4ZjYtYTRkZS1lYmE2YTRlZTQxODYiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzY0MDgzMjIwLCJpYXQiOjE3NjQwNzk2MjAsImVtYWlsIjoidmFkaW0rbGxtQDJsZW1ldHJ5LmlvIiwicGhvbmUiOiIyMzQxMjQxMjQxMjMyMyIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImVtYWlsIiwicHJvdmlkZXJzIjpbImVtYWlsIiwicGhvbmUiXX0sInVzZXJfbWV0YWRhdGEiOnsiZGlzcGxheV9uYW1lIjoiVmFkaW0gTExNIn0sInJvbGUiOiJhdXRoZW50aWNhdGVkIiwiYWFsIjoiYWFsMSIsImFtciI6W3sibWV0aG9kIjoicGFzc3dvcmQiLCJ0aW1lc3RhbXAiOjE3NjQwNzk2MjB9XSwic2Vzc2lvbl9pZCI6IjJjOGQ3NThjLWUzNGUtNDkwZS05NTliLTQyZTZiN2FmMmJhZiIsImlzX2Fub255bW91cyI6ZmFsc2V9.MSsWUjYbc1pywuXzEWSSku0kjFBtyfDcj8plHj52w8E`,
+    },
+    queryStringParameters: {
+        userId: '86844297-5ae0-4b5a-a571-baf38977d82e',
+    },
+};

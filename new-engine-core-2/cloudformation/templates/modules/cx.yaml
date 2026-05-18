@@ -1,0 +1,3355 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Customer Experience module
+
+Metadata:
+  cfn-lint:
+    config:
+      ignore_checks:
+        - W3002
+
+Parameters:
+  Environment:
+    Type: String
+  VPC:
+    Type: String
+  PrivateSubnetIds:
+    Type: CommaDelimitedList
+  SecurityGroup:
+    Type: String
+  CoreApi:
+    Type: String
+  ApiGatewayStage:
+    Type: String
+  PrivateBucketName:
+    Type: String
+  LlmDataSourcesFolder:
+    Type: String
+    Default: llm-data-sources
+  CoreApiRootResourceId:
+    Type: String
+  WebhookResourceId:
+    Type: String
+  JwtTokenAuthorizer:
+    Type: String
+  DBProxyLambdaArn:
+    Type: String
+  AwsInvokerLambdaArn:
+    Type: String
+  DatabaseApiUrl:
+    Type: String
+  JwtAuthorizerSecret:
+    Type: String
+  JwtAuthorizerSecretGetPolicy:
+    Type: String
+  CommonLayer:
+    Type: String
+  LambdaRuntime:
+    Type: String
+    Default: nodejs22.x
+  CxChannelsFolder:
+    Type: String
+    Default: cx-channels
+  MigrationDbScriptLambda:
+    Type: String
+  ModuleName:
+    Type: String
+    Default: cx-module
+  ApiGatewayLambdaExecutionRole:
+    Type: String
+  Version:
+    Type: String
+    Default: '1.0.0'
+
+Resources:
+  # =================================================================
+  # Common CX Module Resources
+  # =================================================================
+
+  CxScheduleGroup:
+    Type: AWS::Scheduler::ScheduleGroup
+    Properties:
+      Name: 'F2-CX-Module'
+
+  # =================================================================
+  # 1. Api Gateway Resources
+  # =================================================================
+  CxResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CoreApiRootResourceId
+      PathPart: 'cx'
+
+  PublicResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CoreApiRootResourceId
+      PathPart: 'public'
+
+  WebIntegrationResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref PublicResource
+      PathPart: 'web-integration'
+
+  MessagesPollResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref PublicResource
+      PathPart: 'messages-poll'
+  
+  PublicSessionResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref PublicResource
+      PathPart: 'session'
+
+  PublicSessionOptionsApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref PublicSessionResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  ChatResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CxResource
+      PathPart: 'chat'
+
+  ConnectInstancesResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CxResource
+      PathPart: 'connect-instances'
+
+  ConnectInstancesListResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref ConnectInstancesResource
+      PathPart: 'list'
+  
+  ChannelResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CxResource
+      PathPart: 'channel'
+
+  ChannelQuestionResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref ChannelResource
+      PathPart: 'question'
+
+# TODO: Need to resolve true way for naming resources
+  AiAgentResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CxResource
+      PathPart: 'ai-agent'
+
+  AiAgentsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CxResource
+      PathPart: 'ai-agents'
+
+  AiAgentsActionGroupsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref AiAgentsResource
+      PathPart: 'action-groups'
+
+  AiAgentsActionGroupsListResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref AiAgentsActionGroupsResource
+      PathPart: 'list'
+
+  AiAgentsKnowledgeBaseResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref AiAgentsResource
+      PathPart: 'knowledge-base'
+
+  AiAgentsKnowledgeBaseListResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref AiAgentsKnowledgeBaseResource
+      PathPart: 'list'
+
+  LiveChatResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref WebhookResourceId
+      PathPart: 'live-chat'
+
+  CollaboratorResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref AiAgentsResource
+      PathPart: 'collaborator'
+
+  CollaboratorListResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CollaboratorResource
+      PathPart: 'list'
+
+  ChatMessagesResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref PublicResource
+      PathPart: 'chat_messages'
+
+  ChatMessagesRatingResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref ChatMessagesResource
+      PathPart: 'rating'
+
+  ChatMessagesFeedbackResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref ChatMessagesResource
+      PathPart: 'feedback'
+
+  ChatSessionsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref PublicResource
+      PathPart: 'chat_sessions'
+
+  ChatSessionsRatingResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref ChatSessionsResource
+      PathPart: 'rating'
+
+  ChatSessionsFeedbackResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref ChatSessionsResource
+      PathPart: 'feedback'
+
+  ChatMessagesReportResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref ChatMessagesResource
+      PathPart: 'report'
+
+  DashboardResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CxResource
+      PathPart: 'dashboard'
+
+  MetricsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref DashboardResource
+      PathPart: 'metrics'
+
+  # =================================================================
+  # SQS Response Analyst
+  # =================================================================
+
+  ResponseAnalysisQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 900
+      QueueName: !Sub "f2-cx-response-analysis-queue-${Environment}.fifo"
+      FifoQueue: true
+      ContentBasedDeduplication: true
+
+  ResponseAnalystLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-sqs-response-analyst-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-model-invoke-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource:
+                  - !Sub arn:aws:bedrock:*::foundation-model/*
+                  - !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*
+        - PolicyName: !Sub 'f2-sqs-subscribe-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt ResponseAnalysisQueue.Arn
+
+  ResponseAnalystLambda:
+    Type: AWS::Lambda::Function
+    DependsOn: ResponseAnalysisQueue
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt ResponseAnalystLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-sqs-response-analyst-${Environment}'
+      Code: ../../lambda-dist/cx-sqs-response-analyst
+      Timeout: 900
+      MemorySize: 512
+      Environment:
+        Variables:
+          DB_API_URL: !Ref DatabaseApiUrl
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+
+  ResponseAnalysisQueueLambdaTrigger:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 10
+      Enabled: true
+      EventSourceArn: !GetAtt ResponseAnalysisQueue.Arn
+      FunctionName: !GetAtt ResponseAnalystLambda.Arn
+    DependsOn:
+      - ResponseAnalystLambda
+
+  # =================================================================
+  # WebSocket Server
+  # =================================================================
+
+  WebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub 'f2-ws-${Environment}'
+      Description: 'WebSocket API for f2 application'
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: '$request.body.type'
+
+  WebSocketHandlerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-websocket-handler-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-lambda-websocket-access-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: execute-api:ManageConnections
+                Resource: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/${WebSocketApiStage}/POST/@connections/*'
+
+  WebSocketHandlerLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt WebSocketHandlerLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-websocket-handler-${Environment}'
+      Code: ../../lambda-dist/cx-websocket-handler
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          DB_API_URL: !Ref DatabaseApiUrl
+          WEBSOCKET_URL: !Sub '${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+
+  WebSocketHandlerLambdaPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn: WebSocketHandlerLambda
+    Properties:
+      Action: lambda:invokeFunction
+      FunctionName: !GetAtt "WebSocketHandlerLambda.Arn"
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*"
+
+  WebSocketApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebSocketHandlerLambda.Arn}/invocations"
+
+  WebSocketApiConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: '$connect'
+      Target: !Sub "integrations/${WebSocketApiIntegration}"
+
+  WebSocketApiDisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: '$disconnect'
+      Target: !Sub "integrations/${WebSocketApiIntegration}"
+
+  WebSocketApiPingRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: 'ping'
+      Target: !Sub "integrations/${WebSocketApiIntegration}"
+
+  WebSocketApiAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/${WebSocketApi}/access-logs'
+      RetentionInDays: 365
+
+  WebSocketApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      StageName: !Ref Environment
+      ApiId: !Ref WebSocketApi
+      AutoDeploy: true
+#      AccessLogSettings:
+#        DestinationArn: !GetAtt WebSocketApiAccessLogGroup.Arn
+#        Format: !Join
+#          - ''
+#          - - '{"requestId":"$context.requestId",'
+#            - '"ip":"$context.identity.sourceIp",'
+#            - '"user":"$context.identity.user",'
+#            - '"requestTime":"$context.requestTime",'
+#            - '"routeKey":"$context.routeKey",'
+#            - '"status":"$context.status",'
+#            - '"connectionId":"$context.connectionId",'
+#            - '"messageId":"$context.messageId",'
+#            - '"eventType":"$context.eventType",'
+#            - '"duration":"$context.integration.latency",'
+#            - '"error":"$context.error.message",'
+#            - '"authError":"$context.authorizer.error"}'
+#      DefaultRouteSettings:
+#        LoggingLevel: INFO
+
+  # =================================================================
+  # WebSocket Connections Pruner
+  # =================================================================
+
+  WebSocketPrunerCronLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-websocket-pruner-cron-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+
+  WebSocketPrunerCronLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt WebSocketPrunerCronLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-websocket-pruner-cron-${Environment}'
+      Code: ../../lambda-dist/cx-websocket-pruner-cron
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      MemorySize: 512
+      Timeout: 60
+      Layers:
+        - !Ref CommonLayer
+      Environment:
+        Variables:
+          DB_API_URL: !Ref DatabaseApiUrl
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+
+  WebSocketPrunerCronLambdaConfig:
+    Type: AWS::Lambda::EventInvokeConfig
+    DependsOn: WebSocketPrunerCronLambda
+    Properties:
+      FunctionName: !Ref WebSocketPrunerCronLambda
+      MaximumRetryAttempts: 0
+      Qualifier: $LATEST
+
+  WebSocketPrunerScheduleRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-websocket-pruner-schedule-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaInvokePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt WebSocketPrunerCronLambda.Arn
+
+  WebSocketPrunerSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: 'f2-cx-websocket-pruner-daily'
+      GroupName: !Ref CxScheduleGroup
+      ScheduleExpression: 'cron(0 1 * * ? *)'
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !GetAtt WebSocketPrunerCronLambda.Arn
+        RoleArn: !GetAtt WebSocketPrunerScheduleRole.Arn
+
+  # =================================================================
+  # /public/ws-init
+  # =================================================================
+
+  PublicWsInitResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref PublicResource
+      PathPart: 'ws-init'
+
+  PublicWsInitOptionsApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref PublicWsInitResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  WebSocketInitLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-websocket-init-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+
+  WebSocketInitLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt WebSocketInitLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-websocket-init-${Environment}'
+      Code: ../../lambda-dist/cx-websocket-init
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          WEBSOCKET_URL: !Sub '${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+
+  PublicWsInitPostApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref PublicWsInitResource
+      HttpMethod: POST
+      ApiKeyRequired: true
+      AuthorizationType: 'NONE'
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !GetAtt WebSocketInitLambda.Arn
+
+  # =================================================================
+  # 2. WebIntegration Lambda
+  # =================================================================
+  WebIntegrationLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt WebIntegrationLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-web-integration-${Environment}'
+      Code: ../../lambda-dist/cx-web-integration
+      MemorySize: 512
+      Timeout: 30
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      Environment:
+        Variables:
+          DB_API_URL: !Ref DatabaseApiUrl
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+          REQUEST_PROCESSING_ARN: !GetAtt RequestProcessingLambda.Arn
+
+  OptionsWebIntegrationApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref WebIntegrationResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  WebIntegrationLambdaPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref WebIntegrationResource
+      HttpMethod: POST
+      ApiKeyRequired: true
+      AuthorizationType: 'NONE'
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !GetAtt WebIntegrationLambda.Arn
+
+  # TODO: Do add invoke permissions for all lambda functions or use Role for AWS API Gateway?
+  # WebIntegrationLambdaApiInvokePermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref WebIntegrationLambda
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/POST/public/web-integration
+
+  WebIntegrationLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-web-integration-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-Lambda-Invoke-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt RequestProcessingLambda.Arn
+
+  # =================================================================
+  # 3. MessagesPoll Lambda
+  # =================================================================
+  MessagesPollLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt MessagesPollLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-poll-messages-integration-${Environment}'
+      Code: ../../lambda-dist/cx-poll-messages-integration
+      MemorySize: 512
+      Timeout: 30
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      Environment:
+        Variables:
+          APP_NAME: f2
+          ENV: !Ref Environment
+          ACCOUNT_ID: !Ref AWS::AccountId
+
+  OptionsMessagesPollApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref MessagesPollResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  MessagesPollLambdaGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref MessagesPollResource
+      HttpMethod: GET
+      ApiKeyRequired: true
+      AuthorizationType: 'NONE'
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !GetAtt MessagesPollLambda.Arn
+
+  # TODO: Do add invoke permissions for all lambda functions or use Role for AWS API Gateway?
+  # MessagesPollLambdaApiInvokePermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref MessagesPollLambda
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/GET/public/messages-poll
+
+  MessagesPollLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-poll-messages-integration-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+      Policies:
+        - PolicyName: !Sub 'f2-Lambda-SQS-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                Resource: '*' # !FIXME: '*' should be replaced
+
+  # =================================================================
+  # 5. DBProxy Lambda Attachments
+  # =================================================================
+  OptionsChatMessagesRatingApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChatMessagesRatingResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,PATCH,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  ChatMessagesRatingPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChatMessagesRatingResource
+      HttpMethod: POST
+      ApiKeyRequired: true
+      AuthorizationType: 'NONE'
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref DBProxyLambdaArn
+
+  ChatMessagesRatingPatchMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChatMessagesRatingResource
+      HttpMethod: PATCH
+      ApiKeyRequired: true
+      AuthorizationType: 'NONE'
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref DBProxyLambdaArn
+
+  ChatMessagesRatingDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChatMessagesRatingResource
+      HttpMethod: DELETE
+      ApiKeyRequired: true
+      AuthorizationType: 'NONE'
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref DBProxyLambdaArn
+
+  OptionsChatMessagesFeedbackApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChatMessagesFeedbackResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  ChatMessagesFeedbackPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChatMessagesFeedbackResource
+      HttpMethod: POST
+      ApiKeyRequired: true
+      AuthorizationType: 'NONE'
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref DBProxyLambdaArn
+
+  OptionsChatSessionsRatingApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChatSessionsRatingResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  ChatSessionsRatingPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChatSessionsRatingResource
+      HttpMethod: POST
+      ApiKeyRequired: true
+      AuthorizationType: 'NONE'
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref DBProxyLambdaArn
+
+  OptionsChatSessionsFeedbackApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChatSessionsFeedbackResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  ChatSessionsFeedbackPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChatSessionsFeedbackResource
+      HttpMethod: POST
+      ApiKeyRequired: true
+      AuthorizationType: 'NONE'
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref DBProxyLambdaArn
+
+  OptionsChatMessagesReportApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChatMessagesReportResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  ChatMessagesReportPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChatMessagesReportResource
+      HttpMethod: POST
+      ApiKeyRequired: true
+      AuthorizationType: 'NONE'
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref DBProxyLambdaArn
+
+  DashboardMetricsGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref MetricsResource
+      HttpMethod: GET
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref DBProxyLambdaArn
+
+  OptionsDashboardMetricsApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref MetricsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  # =================================================================
+  # /dashboard/360-statuses
+  # =================================================================
+
+  360StatusesResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref DashboardResource
+      PathPart: '360-statuses'
+
+  OptionsDashboard360StatusesApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref 360StatusesResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  Dashboard360StatusesGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref 360StatusesResource
+      HttpMethod: GET
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref DBProxyLambdaArn
+
+  OptionsChatApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChatResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,PATCH,DELETE,GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  ChatPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChatResource
+      HttpMethod: POST
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref DBProxyLambdaArn
+
+  ChatPatchMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChatResource
+      HttpMethod: PATCH
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref DBProxyLambdaArn
+
+  ChatDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChatResource
+      HttpMethod: DELETE
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref DBProxyLambdaArn
+
+  ChatGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChatResource
+      HttpMethod: GET
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref DBProxyLambdaArn
+
+  OptionsChanelApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChannelResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,DELETE,GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  ChannelGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChannelResource
+      HttpMethod: GET
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref DBProxyLambdaArn
+
+  OptionsChannelQuestionApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChannelQuestionResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,PATCH,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  ChannelQuestionPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChannelQuestionResource
+      HttpMethod: POST
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref DBProxyLambdaArn
+
+  ChannelQuestionPatchMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChannelQuestionResource
+      HttpMethod: PATCH
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref DBProxyLambdaArn
+
+  ChannelQuestionDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChannelQuestionResource
+      HttpMethod: DELETE
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref DBProxyLambdaArn
+
+  # =================================================================
+  # 6. WebhookLiveChat Lambda
+  # =================================================================
+  WebhookLiveChatLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt WebhookLiveChatLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-webhook-livechat-${Environment}'
+      Code: ../../lambda-dist/cx-webhook-livechat
+      MemorySize: 512
+      Timeout: 30
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      Environment:
+        Variables:
+          ENV: !Ref Environment
+          APP_NAME: f2
+          DB_API_URL: !Ref DatabaseApiUrl
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+
+  OptionsWebhookLiveChatApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LiveChatResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  WebhookLiveChatLambdaPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref LiveChatResource
+      HttpMethod: POST
+      ApiKeyRequired: false
+      AuthorizationType: 'NONE'
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !GetAtt WebhookLiveChatLambda.Arn
+
+  # TODO: Do add invoke permissions for all lambda functions or use Role for AWS API Gateway?
+  # WebhookLiveChatLambdaApiInvokePermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref WebhookLiveChatLambda
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/POST/webhook/live-chat
+
+  WebhookLiveChatLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-webhook-live-chat-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+      Policies:
+        - PolicyName: !Sub 'f2-Lambda-Webhook-LiveChat-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt ResponseProcessingLambda.Arn
+        - PolicyName: !Sub 'f2-cx-secretsmanager-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Sub 'arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:f2-${Environment}/cx/channel-vendor-secret/*'
+
+  # =================================================================
+  # /webhook/360dialog
+  # =================================================================
+
+  360DialogResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref WebhookResourceId
+      PathPart: '360dialog'
+
+  OptionsWebhook360DialogApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref 360DialogResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  Webhook360DialogLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-webhook-360dialog-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-cx-lambda-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt RequestProcessingLambda.Arn
+        - PolicyName: !Sub 'f2-cx-secretsmanager-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Sub 'arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:f2-${Environment}/cx/channel-vendor-secret/*'
+
+  Webhook360DialogLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt Webhook360DialogLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-webhook-360dialog-${Environment}'
+      Code: ../../lambda-dist/cx-webhook-360dialog
+      MemorySize: 512
+      Timeout: 30
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      Environment:
+        Variables:
+          DB_API_URL: !Ref DatabaseApiUrl
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+          REQUEST_PROCESSING_ARN: !GetAtt RequestProcessingLambda.Arn
+          ENV: !Ref Environment
+
+  Webhook360DialogPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref 360DialogResource
+      HttpMethod: POST
+      ApiKeyRequired: false
+      AuthorizationType: 'NONE'
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${Webhook360DialogLambda.Arn}/invocations'
+
+  # =================================================================
+  # 7. ConnectInstancesListIntegration Lambda
+  # =================================================================
+  ConnectInstancesListIntegrationLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt ConnectInstancesListIntegrationLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-connect-instance-list-integration-${Environment}'
+      Code: ../../lambda-dist/cx-connect-instance-list-integration
+      MemorySize: 512
+      Timeout: 30
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      Environment:
+        Variables:
+          DB_API_URL: !Ref DatabaseApiUrl
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+          APP_NAME: f2
+          ENV: !Ref Environment
+
+  OptionsConnectInstancesListIntegrationApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ConnectInstancesListResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  ConnectInstancesListIntegrationLambdaGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ConnectInstancesListResource
+      HttpMethod: GET
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !GetAtt ConnectInstancesListIntegrationLambda.Arn
+
+  # TODO: Do add invoke permissions for all lambda functions or use Role for AWS API Gateway?
+  # ConnectInstancesListIntegrationLambdaApiInvokePermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref ConnectInstancesListIntegrationLambda
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/GET/cx/connect-instances/list
+
+  ConnectInstancesListIntegrationLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-connect-instance-list-integration-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-Lambda-Connect-Instance-Details-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - connect:DescribeInstance
+                  - ds:DescribeDirectories
+                Resource: '*' # !FIXME: '*' should be replaced
+
+  # =================================================================
+  # 8. AwsInvoker Lambda Attachments
+  # =================================================================
+  OptionsAiAgentsActionGroupsApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref AiAgentsActionGroupsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  AiAgentsActionGroupsGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref AiAgentsActionGroupsResource
+      HttpMethod: GET
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref AwsInvokerLambdaArn
+
+  AiAgentsActionGroupsPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref AiAgentsActionGroupsResource
+      HttpMethod: POST
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref AwsInvokerLambdaArn
+
+  AiAgentsActionGroupsPutMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref AiAgentsActionGroupsResource
+      HttpMethod: PUT
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref AwsInvokerLambdaArn
+
+  AiAgentsActionGroupsDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref AiAgentsActionGroupsResource
+      HttpMethod: DELETE
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref AwsInvokerLambdaArn
+
+  OptionsAiAgentsActionGroupsListApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref AiAgentsActionGroupsListResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  AiAgentsActionGroupsListGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref AiAgentsActionGroupsListResource
+      HttpMethod: GET
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref AwsInvokerLambdaArn
+
+  OptionsAiAgentApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref AiAgentsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  AiAgentGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref AiAgentsResource
+      HttpMethod: GET
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref AwsInvokerLambdaArn
+
+  OptionsAiAgentCollaboratorsListApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref CollaboratorListResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  AiAgentCollaboratorsListGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref CollaboratorListResource
+      HttpMethod: GET
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref AwsInvokerLambdaArn
+
+  OptionsAiAgentCollaboratorApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref CollaboratorResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,PUT,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  AiAgentCollaboratorPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref CollaboratorResource
+      HttpMethod: POST
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref AwsInvokerLambdaArn
+
+  AiAgentCollaboratorPutMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref CollaboratorResource
+      HttpMethod: PUT
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref AwsInvokerLambdaArn
+
+  AiAgentCollaboratorDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref CollaboratorResource
+      HttpMethod: DELETE
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref AwsInvokerLambdaArn
+
+  OptionsAiAgentKnowledgeBasesListApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref AiAgentsKnowledgeBaseListResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  AiAgentKnowledgeBasesListGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref AiAgentsKnowledgeBaseListResource
+      HttpMethod: GET
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref AwsInvokerLambdaArn
+
+  OptionsAiAgentKnowledgeBaseApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref AiAgentsKnowledgeBaseResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,PUT,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  AiAgentKnowledgeBasePostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref AiAgentsKnowledgeBaseResource
+      HttpMethod: POST
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref AwsInvokerLambdaArn
+
+  AiAgentKnowledgeBasePutMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref AiAgentsKnowledgeBaseResource
+      HttpMethod: PUT
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref AwsInvokerLambdaArn
+
+  AiAgentKnowledgeBaseDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref AiAgentsKnowledgeBaseResource
+      HttpMethod: DELETE
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref AwsInvokerLambdaArn
+
+  # =================================================================
+  # 9. AmazonConnectStreamListener Lambda
+  # =================================================================
+  AmazonConnectStreamListenerLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt AmazonConnectStreamListenerLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-aws-connect-stream-listener-${Environment}'
+      Code: ../../lambda-dist/cx-aws-connect-stream-listener
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      MemorySize: 512
+      Timeout: 30
+      Layers:
+        - !Ref CommonLayer
+      Environment:
+        Variables:
+          ENV: !Ref Environment
+          APP_NAME: f2
+          ACCOUNT_ID: !Ref AWS::AccountId
+          DB_API_URL: !Ref DatabaseApiUrl
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+
+  AmazonConnectStreamListenerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-aws-connect-stream-listener-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-Lambda-Invoke-Lambda-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt ResponseProcessingLambda.Arn
+        - PolicyName: !Sub 'f2-cx-secretsmanager-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Sub 'arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:f2-${Environment}/cx/channel-vendor-secret/*'
+
+  # =================================================================
+  # 10. CronQueuePruner Lambda
+  # =================================================================
+  CronQueuePrunerLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt CronQueuePrunerLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-cron-queue-pruner-${Environment}'
+      Code: ../../lambda-dist/cx-cron-queue-pruner
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      MemorySize: 512
+      Timeout: 30
+      Layers:
+        - !Ref CommonLayer
+      Environment:
+        Variables:
+          ENV: !Ref Environment
+          APP_NAME: f2
+          ACCOUNT_ID: !Ref AWS::AccountId
+
+  CronQueuePrunerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-cron-queue-pruner-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+      Policies:
+        - PolicyName: !Sub 'f2-Lambda-SQS-Access-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ListQueues
+                  - sqs:DeleteQueue
+                Resource: '*' # !FIXME: '*' should be replaced
+        - PolicyName: !Sub 'f2-Lambda-Cloudwatch-Get-Metric-Statistics-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: cloudwatch:GetMetricStatistics
+                Resource: '*' # !FIXME: '*' should be replaced
+
+  # =================================================================
+  # 11. LexResponseProcessing Lambda
+  # =================================================================
+  LexResponseProcessingLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt LexResponseProcessingLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-lex-response-processing-${Environment}'
+      Code: ../../lambda-dist/cx-lex-response-processing
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      MemorySize: 512
+      Timeout: 30
+      Layers:
+        - !Ref CommonLayer
+      Environment:
+        Variables:
+          ENV: !Ref Environment
+          APP_NAME: f2
+          ACCOUNT_ID: !Ref AWS::AccountId
+
+  LexResponseProcessingLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-lex-response-processing-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+      Policies:
+        - PolicyName: !Sub 'f2-Lambda-Invoke-Lambda-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt LiveAgentContactInitProcessingLambda.Arn
+
+  # =================================================================
+  # 12. LiveAgentContactInitProcessing Lambda
+  # =================================================================
+  LiveAgentContactInitProcessingLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt LiveAgentContactInitProcessingLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-live-agent-contact-init-processing-${Environment}'
+      Code: ../../lambda-dist/cx-live-agent-contact-init-processing
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          ENV: !Ref Environment
+          APP_NAME: f2
+          DB_API_URL: !Ref DatabaseApiUrl
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+          ACCOUNT_ID: !Ref AWS::AccountId
+
+  # TODO: Do add invoke permissions for all lambda functions or use Role for AWS API Gateway?
+  # LiveAgentContactInitProcessingLambdaAgentsInvokePermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref LiveAgentContactInitProcessingLambda
+  #     Action: 'lambda:InvokeFunction'
+  #     Principal: 'bedrock.amazonaws.com'
+  #     SourceArn: !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/*'
+
+  LiveAgentContactInitProcessingLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-live-agent-contact-init-processing-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-Lambda-Amazon-Connect-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - connect:StartChatContact
+                  - connect:StartContactStreaming
+                Resource: '*' # !FIXME: '*' should be replaced
+        - PolicyName: !Sub 'f2-Lambda-Secret-Manager-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: '*' # !FIXME: '*' should be replaced
+
+  # =================================================================
+  # 13. RequestProcessing Lambda
+  # =================================================================
+  RequestProcessingLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt RequestProcessingLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-request-processing-${Environment}'
+      Code: ../../lambda-dist/cx-request-processing
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          LLM_DATA_SOURCES_FOLDER: !Ref LlmDataSourcesFolder
+          TRACING_LOG_GROUP: !Ref BedrockAgentsTracingLogGroup
+          DB_API_URL: !Ref DatabaseApiUrl
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+          ENV: !Ref Environment
+          APP_NAME: f2
+          ACCOUNT_ID: !Ref AWS::AccountId
+          RESPONSE_ANALYSIS_QUEUE: !Ref ResponseAnalysisQueue
+          WEBSOCKET_URL: !Sub '${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+
+  RequestProcessingLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-request-processing-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-Lambda-Invoke-Lambda-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource:
+                  - !GetAtt ResponseProcessingLambda.Arn
+                  - !GetAtt LexResponseProcessingLambda.Arn
+        - PolicyName: !Sub 'f2-Lambda-Invoke-Lex-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lex:RecognizeText
+                Resource: !Sub arn:aws:lex:${AWS::Region}:${AWS::AccountId}:bot/*
+        - PolicyName: !Sub 'f2-Lambda-Invoke-Agent-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: bedrock:InvokeAgent
+                Resource:
+                  - !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/*
+                  - !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent-alias/*
+        - PolicyName: !Sub 'f2-Lambda-Comprehend-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - comprehend:DetectDominantLanguage
+                  - comprehend:DetectPiiEntities
+                Resource: '*' # !FIXME: '*' should be replaced
+        - PolicyName: !Sub 'f2-Lambda-SQS-Access-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:CreateQueue
+                  - sqs:SendMessage
+                  - sqs:GetQueueUrl
+                Resource: '*' # !FIXME: '*' should be replaced
+        - PolicyName: !Sub 'f2-lambda-websocket-access-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: execute-api:ManageConnections
+                Resource: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/${WebSocketApiStage}/POST/@connections/*'
+        - PolicyName: !Sub 'f2-cx-secretsmanager-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Sub 'arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:f2-${Environment}/cx/channel-vendor-secret/*'
+
+  # =================================================================
+  # 14. ResponseProcessing Lambda
+  # =================================================================
+  ResponseProcessingLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt ResponseProcessingLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-response-processing-${Environment}'
+      Code: ../../lambda-dist/cx-response-processing
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          APP_NAME: f2
+          ENV: !Ref Environment
+          ACCOUNT_ID: !Ref AWS::AccountId
+          DB_API_URL: !Ref DatabaseApiUrl
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+
+  ResponseProcessingLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-response-processing-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-Lambda-SQS-Access-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:CreateQueue
+                  - sqs:SendMessage
+                  - sqs:GetQueueUrl
+                Resource: '*' # !FIXME: '*' should be replaced
+
+  # =================================================================
+  # 15. RotationLiveChatToken Lambda
+  # =================================================================
+  RotationLiveChatTokenLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt RotationLiveChatTokenLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-rotation-livechat-token-${Environment}'
+      Code: ../../lambda-dist/cx-rotation-livechat-token
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          APP_NAME: f2
+          ENV: !Ref Environment
+
+  # TODO: Do add invoke permissions for all lambda functions or use Role for AWS API Gateway?
+  # RotationLiveChatTokenLambdaSecretsManagerInvokePermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref RotationLiveChatTokenLambda
+  #     Action: 'lambda:InvokeFunction'
+  #     Principal: 'secretsmanager.amazonaws.com'
+  #     SourceArn: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Environment}/lc/*'
+
+  RotationLiveChatTokenLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-rotation-live-chat-token-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+      Policies:
+        - PolicyName: !Sub 'f2-Lambda-Secret-Manager-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:PutSecretValue
+                Resource: '*' # !FIXME: '*' should be replaced
+
+  # =================================================================
+  # 16. Bedrock Agents Tracing Log Group
+  # =================================================================
+  BedrockAgentsTracingLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "f2-agents-tracing-logs"
+
+  # =================================================================
+  # 17. EventBridge Cron Queue Pruner Daily
+  # =================================================================
+  EventBridgeCronQueuePrunerDailyRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'f2-cron-queue-pruner-daily-${Environment}'
+      Description: "Delete inactive queues daily"
+      ScheduleExpression: "cron(0 0 * * ? *)"
+      State: "ENABLED"
+      Targets:
+        - Arn: !GetAtt CronQueuePrunerLambda.Arn
+          Id: "CronQueuePrunerLambda"
+
+  # TODO: Do add invoke permissions for all lambda functions or use Role for AWS API Gateway?
+  # EventBridgeCronQueuePrunerDailyLambdaPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref CronQueuePrunerLambda
+  #     Action: 'lambda:InvokeFunction'
+  #     Principal: 'events.amazonaws.com'
+  #     SourceArn: !GetAtt EventBridgeCronQueuePrunerDailyRule.Arn
+
+  # =================================================================
+  # 18. ChannelPost Lambda
+  # =================================================================
+  ChanelPostLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt ChannelPostLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-channel-post-${Environment}'
+      Code: ../../lambda-dist/cx-channel-post
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          ENV: !Ref Environment
+          DB_API_URL: !Ref DatabaseApiUrl
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+          BUCKET_NAME: !Ref PrivateBucketName
+          CX_CHANNELS_FOLDER: !Ref CxChannelsFolder
+
+  # TODO: Do add invoke permissions for all lambda functions or use Role for AWS API Gateway?
+  # ChanelPostInvokePermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref ChanelPostLambda
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/POST/cx/channel
+
+  ChanelPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChannelResource
+      HttpMethod: POST
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !GetAtt ChanelPostLambda.Arn
+
+  ChannelPostLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-channel-post-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-cx-chanel-cloudfront-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'cloudfront:CreateDistribution'
+                  - 'cloudfront:ListOriginAccessControls'
+                  - 'cloudfront:CreateOriginAccessControl'
+                Resource: '*'
+        - PolicyName: !Sub 'f2-cx-channel-secretsmanager-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:CreateSecret
+                Resource: '*' # [IM] Should be * because secret does not exist yet
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:PutSecretValue
+                Resource: !Sub 'arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:f2-${Environment}/cx/channel-vendor-secret/*'
+        - PolicyName: !Sub 'f2-cx-channel-s3-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetBucketPolicy
+                  - s3:PutBucketPolicy
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${PrivateBucketName}'
+
+  # =================================================================
+  # 19. ChannelDelete Lambda
+  # =================================================================
+  ChannelDeleteLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-channel-delete-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-cx-channel-cloudfront-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'cloudfront:GetDistributionConfig'
+                  - 'cloudfront:UpdateDistribution'
+                Resource: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/*'
+        - PolicyName: !Sub 'f2-cx-channel-secretsmanager-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:DeleteSecret
+                Resource: !Sub 'arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:f2-${Environment}/cx/channel-vendor-secret/*'
+        - PolicyName: !Sub 'f2-cx-channel-s3-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetBucketPolicy
+                  - s3:PutBucketPolicy
+                  - s3:DeleteBucketPolicy
+                  - s3:ListBucket
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${PrivateBucketName}'
+              - Effect: Allow
+                Action: s3:DeleteObject
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${PrivateBucketName}/${CxChannelsFolder}/*'
+
+  ChanelDeleteLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt ChannelDeleteLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-channel-delete-${Environment}'
+      Code: ../../lambda-dist/cx-channel-delete
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          ENV: !Ref Environment
+          DB_API_URL: !Ref DatabaseApiUrl
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+          BUCKET_NAME: !Ref PrivateBucketName
+          CX_CHANNELS_FOLDER: !Ref CxChannelsFolder
+
+  # TODO: Do add invoke permissions for all lambda functions or use Role for AWS API Gateway?
+  # ChanelDeleteInvokePermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref ChanelDeleteLambda
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/DELETE/cx/channel
+
+  ChanelDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref ChannelResource
+      HttpMethod: DELETE
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !GetAtt ChanelDeleteLambda.Arn
+
+  # =================================================================
+  # 20. Migration DB data for CX module
+  # =================================================================
+  MigrationScriptDbDateTrigger:
+    Type: Custom::MigrationScriptTrigger
+    Properties:
+      ServiceTimeout: 70
+      ServiceToken: !Ref MigrationDbScriptLambda
+      module: !Ref ModuleName
+      Version: !Ref Version
+
+  # =================================================================
+  # 21. Policy to access invoke lambdas from API Gateway
+  # =================================================================
+  CxModuleLambdaInvokePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: CxModuleLambdaInvokePolicy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+            Resource: 
+              - !GetAtt WebIntegrationLambda.Arn
+              - !GetAtt MessagesPollLambda.Arn
+              - !GetAtt WebhookLiveChatLambda.Arn
+              - !GetAtt Webhook360DialogLambda.Arn
+              - !GetAtt ConnectInstancesListIntegrationLambda.Arn
+              - !GetAtt AmazonConnectStreamListenerLambda.Arn
+              - !GetAtt CronQueuePrunerLambda.Arn
+              - !GetAtt LexResponseProcessingLambda.Arn
+              - !GetAtt LiveAgentContactInitProcessingLambda.Arn
+              - !GetAtt RequestProcessingLambda.Arn
+              - !GetAtt ResponseProcessingLambda.Arn
+              - !GetAtt RotationLiveChatTokenLambda.Arn
+              - !GetAtt ChanelPostLambda.Arn
+              - !GetAtt ChanelDeleteLambda.Arn
+              - !GetAtt AiAgentPostLambda.Arn
+              - !GetAtt AiAgentGetLambda.Arn
+              - !GetAtt AiAgentPutLambda.Arn
+              - !GetAtt ChatSessionCreatorLambda.Arn
+              - !GetAtt WebSocketInitLambda.Arn
+      Roles:
+        - !Sub 
+          - "${RoleName}"
+          - RoleName: 
+              !Select [ 1, !Split [ "/", !Ref ApiGatewayLambdaExecutionRole ] ]
+
+  # =================================================================
+  # 22. Public Key and Usage plan fot API
+  # =================================================================
+  PublicApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    Properties:
+      Enabled: true
+      Name: !Sub 'f2--cx-public-api-key-${Environment}'
+
+  PublicUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      UsagePlanName: !Sub 'f2-cx-public-usage-plan-${Environment}'
+      Description: !Sub 'Used by f2 for getting public access without jwt auth in ${Environment}'
+      ApiStages:
+        - ApiId: !Ref CoreApi
+          Stage: !Ref ApiGatewayStage
+      Quota:
+        Limit: 10000
+        Period: DAY
+      Throttle:
+        BurstLimit: 20
+        RateLimit: 10
+
+  PublicUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyType: API_KEY
+      KeyId: !Ref PublicApiKey
+      UsagePlanId: !Ref PublicUsagePlan
+
+  # =================================================================
+  # 23 AiAgentPostLambda Lambda
+  # =================================================================
+  BedrockAgentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-agent-bedrock-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub 'f2-lambda-Secret-manager-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'bedrock:InvokeModel'
+                  - 'bedrock:InvokeModelWithResponseStream'
+                Resource:
+                  - !Sub arn:aws:bedrock:${AWS::Region}::foundation-model/*
+              - Effect: Allow
+                Action:
+                  - 'bedrock:InvokeModel'
+                  - 'bedrock:InvokeModelWithResponseStream'
+                  - 'bedrock:GetInferenceProfile'
+                  - 'bedrock:GetFoundationModel'
+                Resource:
+                  - !Sub arn:aws:bedrock:*::foundation-model/*
+                  - !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*
+              - Effect: Allow
+                Action:
+                  - 'bedrock:Retrieve'
+                Resource:
+                  - !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*
+              - Effect: Allow
+                Action:
+                  - 'bedrock:GetAgentAlias'
+                  - 'bedrock:InvokeAgent'
+                Resource:
+                  - !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent-alias/*
+
+  AiAgentPostLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt AiAgentPostLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-ai-agent-post-${Environment}'
+      Code: ../../lambda-dist/cx-ai-agent-post
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          APP_NAME: f2
+          ENV: !Ref Environment
+          DB_API_URL: !Ref DatabaseApiUrl
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+          BEDROCK_AGENT_ROLE_ARN: !GetAtt BedrockAgentRole.Arn
+
+  AiAgentPostLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-ai-agent-post-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-cx-bedrock-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'bedrock:CreateAgent'
+                  - 'bedrock:CreateAgentAlias'
+                  - 'bedrock:PrepareAgent'
+                  - 'bedrock:GetAgentAlias'
+                  - 'bedrock:GetAgent'
+                Resource: '*' # !FIXME: '*' should be replaced
+              - Effect: Allow
+                Action:
+                  - 'iam:PassRole'
+                Resource: 
+                  - !GetAtt BedrockAgentRole.Arn
+
+  OptionsAiAgentMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref AiAgentResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,PUT,GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  AiAgentPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref AiAgentResource
+      HttpMethod: POST
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !GetAtt AiAgentPostLambda.Arn
+
+  # =================================================================
+  # 23 AiAgentPutLambda Lambda
+  # =================================================================
+
+  AiAgentPutLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt AiAgentPutLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-ai-agent-put-${Environment}'
+      Code: ../../lambda-dist/cx-ai-agent-put
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          APP_NAME: f2
+          ENV: !Ref Environment
+          DB_API_URL: !Ref DatabaseApiUrl
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+          BEDROCK_AGENT_ROLE_ARN: !GetAtt BedrockAgentRole.Arn
+
+  AiAgentPutLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-ai-agent-put-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-cx-bedrock-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'bedrock:UpdateAgent'
+                  - 'bedrock:PrepareAgent'
+                  - 'bedrock:UpdateAgentAlias'
+                Resource: '*' # !FIXME: '*' should be replaced
+              - Effect: Allow
+                Action:
+                  - 'iam:PassRole'
+                Resource:
+                  - !GetAtt BedrockAgentRole.Arn
+
+  AiAgentPutMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref AiAgentResource
+      HttpMethod: PUT
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !GetAtt AiAgentPutLambda.Arn
+  
+  # =================================================================
+  # 24 AiAgentGetLambda Lambda
+  # =================================================================
+
+  AiAgentGetLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt AiAgentGetLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-ai-agent-get-${Environment}'
+      Code: ../../lambda-dist/cx-ai-agent-get
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          APP_NAME: f2
+          ENV: !Ref Environment
+          DB_API_URL: !Ref DatabaseApiUrl
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+
+  AiAgentGetLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-ai-agent-get-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-cx-bedrock-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'bedrock:GetAgent'
+                Resource: !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/*
+              - Effect: Allow
+                Action:
+                  - 'bedrock:GetAgentAlias'
+                Resource: !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent-alias/*
+
+  AiAgentGetApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref AiAgentResource
+      HttpMethod: GET
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !GetAtt AiAgentGetLambda.Arn
+  
+  # =================================================================
+  # 25 AiAgentGetLambda Lambda
+  # =================================================================
+
+  ChatSessionCreatorLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt ChatSessionCreatorLambdaRole.Arn
+      FunctionName: !Sub 'f2-cx-chat-session-creator-${Environment}'
+      Code: ../../lambda-dist/cx-chat-session-creator
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          APP_NAME: f2
+          ENV: !Ref Environment
+          DB_API_URL: !Ref DatabaseApiUrl
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+
+  ChatSessionCreatorLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cx-chat-session-creator-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-cx-sqs-create-queue-policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:CreateQueue
+                  - sqs:GetQueueUrl
+                Resource: !Sub arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:*.fifo
+
+  ChatSessionCreatorPostApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref PublicSessionResource
+      HttpMethod: POST
+      ApiKeyRequired: true
+      AuthorizationType: 'NONE'
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !GetAtt ChatSessionCreatorLambda.Arn
+  
+  # =================================================================
+  # 26. Outputs
+  # =================================================================
+Outputs:
+  ApiMethods:
+    Description: "The list of API methods"
+    Value: !Join
+      - ','
+      - - !Ref WebIntegrationLambdaPostMethod
+        - !Ref MessagesPollLambdaGetMethod
+        - !Ref WebhookLiveChatLambdaPostMethod
+        - !Ref ConnectInstancesListIntegrationLambdaGetMethod
+        - !Ref AiAgentsActionGroupsGetMethod
+        - !Ref AiAgentsActionGroupsListGetMethod
+        - !Ref ChanelPostMethod
+        - !Ref ChanelDeleteMethod
+        - !Ref OptionsWebIntegrationApiMethod
+        - !Ref OptionsMessagesPollApiMethod
+        - !Ref OptionsChatMessagesRatingApiMethod
+        - !Ref OptionsChatMessagesFeedbackApiMethod
+        - !Ref OptionsChatSessionsRatingApiMethod
+        - !Ref OptionsChatSessionsFeedbackApiMethod
+        - !Ref OptionsChatMessagesReportApiMethod
+        - !Ref OptionsWebhookLiveChatApiMethod
+        - !Ref OptionsConnectInstancesListIntegrationApiMethod
+        - !Ref OptionsAiAgentsActionGroupsApiMethod
+        - !Ref OptionsAiAgentsActionGroupsListApiMethod
+        - !Ref OptionsAiAgentApiMethod
+        - !Ref OptionsAiAgentCollaboratorsListApiMethod
+        - !Ref OptionsChanelApiMethod
+  ModuleName:
+    Value: !Ref ModuleName

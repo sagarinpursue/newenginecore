@@ -1,0 +1,32 @@
+# Database Changelog
+
+## September 2025
+- agents -> chat_agents
+- agents.role (text) -> chat_agents.role (enum chat_agent_role)
+- connect_instances -> chat_connect_instances
+- user_refs -> user_profiles
+- chat_agents (agents) -> add userId and accountId
+- chat_connect_instances (connect_instances) -> add userId and accountId
+- ai_agents -> chat_ai_agents
+- chat_ai_agents (ai_agents) -> remove agent_version
+- chat_ai_agents (ai_agents) -> remove knowledge_base_id
+- chat_ai_agents (ai_agents) -> remove llm_structure_id
+- chat_ai_agents (ai_agents) -> add userId and accountId
+- channels -> chat_channels
+- chat_channels (channels) channel_enum -> chat_channel_type
+- chat_channels (channels) -> remove phone_number
+- chat_channels (channels) -> add userId and accountId
+- chat_bots -> remove llm_structure_id and knowledge_base_id
+- chat_bots -> add userId and accountId
+- chatbot_sessions -> chat_sessions
+- chat_sessions (chatbot_sessions) -> add accountId
+- chat_messages -> add unique to sessionId
+- llm_log -> llm_logs
+- llm_prompt_driver -> llm_prompt_drivers
+- llm_query_engine -> llm_query_engines
+- llm_rule -> llm_rules
+- llm_ruleset -> llm_rulesets
+- llm_structure_shared_token -> llm_structure_shared_tokens
+- llm_structure -> llm_structures
+- llm_task -> llm_tasks
+- llm_logs (llm_log) -> field 'sources' not nullable

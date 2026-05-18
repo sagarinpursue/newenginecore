@@ -1,0 +1,11 @@
+{
+  "name": "f2-common-layer",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "External dependencies libs",
+  "scripts": {
+    "deploy": "node ../deploy-layer.js"
+  },
+  "author": "",
+  "license": "ISC"
+}

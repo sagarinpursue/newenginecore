@@ -1,0 +1,19 @@
+{
+    "type": "object",
+    "required": [
+        "type",
+        "authorizationToken",
+        "methodArn"
+    ],
+    "properties": {
+        "type": {
+            "type": "string"
+        },
+        "authorizationToken": {
+            "type": "string"
+        },
+        "methodArn": {
+            "type": "string"
+        }
+    }
+}

@@ -1,0 +1,27 @@
+{
+    "type": "object",
+    "properties": {
+        "sessionId": { "type": "string" },
+        "input": { "type": "string" },
+        "localId": { "type": "string" },
+        "config": {
+            "type": "object",
+            "properties": {
+                "connectInstanceId": { "type": ["string", "null"] },
+                "connectFlowId": { "type": ["string", "null"] },
+                "connectStreamingEndpointTopic": { "type": ["string", "null"] },
+                "aiAgentId": { "type": ["string", "null"] },
+                "aiAgentAliasId": { "type": ["string", "null"] },
+                "aiAgentLlmStructureId": { "type": ["string", "null"] },
+                "aiAgentKnowledgeBaseId": { "type": ["string", "null"] },
+                "botId": { "type": ["string", "null"] },
+                "botAliasId": { "type": ["string", "null"] },
+                "botLlmStructureId": { "type": ["string", "null"] },
+                "botKnowledgeBaseId": { "type": ["string", "null"] }
+            },
+            "additionalProperties": true
+        }
+    },
+    "required": ["sessionId", "input", "localeId", "config"],
+    "additionalProperties": true
+}

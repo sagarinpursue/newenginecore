@@ -1,0 +1,12 @@
+{
+  "name": "@shared-modules/f2-clients",
+  "version": "1.0.0",
+  "description": "Clients for AWS services.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "ConfidencEway",
+  "license": "ISC"
+}

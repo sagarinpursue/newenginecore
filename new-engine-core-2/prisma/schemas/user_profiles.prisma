@@ -1,0 +1,25 @@
+model UserProfile {
+  userId String @id @default(uuid(4)) @db.Uuid
+
+  userName String?
+  metaData Json?
+
+  userAccountId String
+  userAccount   Account @relation(fields: [userAccountId], references: [accountId])
+
+  chatAgent           ChatAgent[]
+  chatConnectInstance ChatConnectInstance[]
+  chatAiAgent         ChatAiAgent[]
+  chatChannel         ChatChannel[]
+  chatBot             ChatBot[]
+  chat                Chat[]
+  LlmDataSource       LlmDataSource[]
+  LlmPromptDriver     LlmPromptDriver[]
+  LlmQueryEngine      LlmQueryEngine[]
+  LlmRule             LlmRule[]
+  LlmRuleset          LlmRuleset[]
+  LlmStructure        LlmStructure[]
+  LlmTask             LlmTask[]
+
+  @@map("user_profiles")
+}

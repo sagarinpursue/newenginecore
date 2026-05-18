@@ -1,0 +1,12 @@
+model CmsDocumentQuestion {
+  questionId String @id @default(uuid(4)) @db.Uuid
+  questions  String // TODO: String[]
+  s3Uri      String
+
+  reportId String            @db.Uuid
+  report   CmsAnalysisReport @relation(fields: [reportId], references: [reportId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("cms_document_questions")
+}

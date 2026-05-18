@@ -1,0 +1,736 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CMS module
+
+Parameters:
+  Environment:
+    Type: String
+  CoreApi:
+    Type: String
+  CoreApiRootResourceId:
+    Type: String
+  JwtTokenAuthorizer:
+    Type: String
+  DatabaseApiUrl:
+    Type: String
+  JwtAuthorizerSecret:
+    Type: String
+  JwtAuthorizerSecretGetPolicy:
+    Type: String
+  CoreBucket:
+    Type: String
+  CoreBucketCmsTempFolder:
+    Type: String
+    Default: cms-temporary-documents
+
+  LambdaRuntime:
+    Type: String
+    Default: nodejs22.x
+  CommonLayer:
+    Type: String
+  ApiGatewayLambdaExecutionRole:
+    Type: String
+
+  CoreVPC:
+    Type: String
+  PrivateSubnetIds:
+    Type: CommaDelimitedList
+  SecurityGroup:
+    Type: String
+
+  MigrationDbScriptLambda:
+    Type: String
+  ModuleName:
+    Type: String
+    Default: cms-module
+  Version:
+    Type: String
+    Default: '1.0.0'
+  
+  EmptyS3BucketLambda: 
+    Type: String
+  EmptyS3BucketLambdaRole:
+    Type: String
+
+# TODO: add hot links in the documentation to resources in templates
+Resources:
+  # =================================================================
+  # 1. CMS bucket
+  # =================================================================
+  CmsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 
+        - 'f2-cms-${UniqueId}-${Environment}'
+        - UniqueId: !Select [2, !Split ["/", !Ref "AWS::StackId"]]
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: 'Enabled'
+
+  # =================================================================
+  # 2. Api Gateway Resources
+  # =================================================================
+  CmsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CoreApiRootResourceId
+      PathPart: 'cms'
+
+  DocumentsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CmsResource
+      PathPart: 'documents'
+
+  # AnalysisReportsResource:
+  #   Type: AWS::ApiGateway::Resource
+  #   Properties:
+  #     RestApiId: !Ref CoreApi
+  #     ParentId: !Ref CmsResource
+  #     PathPart: 'analysis-reports'
+
+  # GenerateDocumentQuestionsResource:
+  #   Type: AWS::ApiGateway::Resource
+  #   Properties:
+  #     RestApiId: !Ref CoreApi
+  #     ParentId: !Ref AnalysisReportsResource
+  #     PathPart: 'generate-document-questions'
+
+  # GenerateDocumentQuestionsOptionsApiMethod:
+  #   Type: AWS::ApiGateway::Method
+  #   Properties:
+  #     RestApiId: !Ref CoreApi
+  #     ResourceId: !Ref GenerateDocumentQuestionsResource
+  #     HttpMethod: OPTIONS
+  #     AuthorizationType: NONE
+  #     Integration:
+  #       Type: MOCK
+  #       IntegrationResponses:
+  #         - StatusCode: 200
+  #           ResponseParameters:
+  #             method.response.header.Access-Control-Allow-Origin: "'*'"
+  #             method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+  #             method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+  #           ResponseTemplates:
+  #             application/json: ""
+  #       RequestTemplates:
+  #         application/json: '{"statusCode": 200}'
+  #     MethodResponses:
+  #       - StatusCode: 200
+  #         ResponseParameters:
+  #           method.response.header.Access-Control-Allow-Origin: true
+  #           method.response.header.Access-Control-Allow-Methods: true
+  #           method.response.header.Access-Control-Allow-Headers: true
+
+  # DetectIssueChunksResource:
+  #   Type: AWS::ApiGateway::Resource
+  #   Properties:
+  #     RestApiId: !Ref CoreApi
+  #     ParentId: !Ref AnalysisReportsResource
+  #     PathPart: 'detect-issue-chunks'
+
+  # DetectIssueChunksOptionsApiMethod:
+  #   Type: AWS::ApiGateway::Method
+  #   Properties:
+  #     RestApiId: !Ref CoreApi
+  #     ResourceId: !Ref DetectIssueChunksResource
+  #     HttpMethod: OPTIONS
+  #     AuthorizationType: NONE
+  #     Integration:
+  #       Type: MOCK
+  #       IntegrationResponses:
+  #         - StatusCode: 200
+  #           ResponseParameters:
+  #             method.response.header.Access-Control-Allow-Origin: "'*'"
+  #             method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+  #             method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+  #           ResponseTemplates:
+  #             application/json: ""
+  #       RequestTemplates:
+  #         application/json: '{"statusCode": 200}'
+  #     MethodResponses:
+  #       - StatusCode: 200
+  #         ResponseParameters:
+  #           method.response.header.Access-Control-Allow-Origin: true
+  #           method.response.header.Access-Control-Allow-Methods: true
+  #           method.response.header.Access-Control-Allow-Headers: true
+
+  GeneratePreSignUrlsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref DocumentsResource
+      PathPart: 'generate-pre-signed-urls'
+
+  GeneratePreSignUrlsOptionsApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref GeneratePreSignUrlsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  FinishUploadingFilesResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref DocumentsResource
+      PathPart: 'finish-uploading-files'
+
+  FinishUploadingFilesOptionsApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref FinishUploadingFilesResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  DocumentsListResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref DocumentsResource
+      PathPart: 'list'
+
+  DocumentsListOptionsApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref DocumentsListResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  # =================================================================
+  # 3. CmsChunkDuplicateConflictDetector Lambda
+  # =================================================================
+  # TODO: Need remove this lambda from first release
+  # ChunkDuplicateConflictDetectorLambda:
+  #   Type: AWS::Lambda::Function
+  #   Properties:
+  #     Runtime: !Ref LambdaRuntime
+  #     Handler: index.handler
+  #     Role: !GetAtt ChunkDuplicateConflictDetectorLambdaRole.Arn
+  #     FunctionName: !Sub 'f2-cms-chunk-duplicate-conflict-detector-${Environment}'
+  #     Code: ../../lambda-dist/cms-chunk-duplicate-conflict-detector
+  #     Layers:
+  #       - !Ref CommonLayer
+  #     VpcConfig:
+  #       SubnetIds: !Ref PrivateSubnetIds
+  #       SecurityGroupIds:
+  #         - !Ref SecurityGroup
+  #     MemorySize: 512
+  #     Timeout: 60
+  #     Environment:
+  #       Variables:
+  #         DB_API_URL: !Ref DatabaseApiUrl
+  #         JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+  #         APP_NAME: f2
+  #         ENV: !Ref Environment
+
+  # ChunkDuplicateConflictDetectorLambdaPostMethod:
+  #   Type: AWS::ApiGateway::Method
+  #   Properties:
+  #     RestApiId: !Ref CoreApi
+  #     ResourceId: !Ref DetectIssueChunksResource
+  #     HttpMethod: POST
+  #     ApiKeyRequired: false
+  #     AuthorizationType: 'CUSTOM'
+  #     AuthorizerId: !Ref JwtTokenAuthorizer
+  #     Integration:
+  #       Type: AWS_PROXY
+  #       Credentials: !Ref ApiGatewayLambdaExecutionRole
+  #       IntegrationHttpMethod: POST
+  #       Uri: !Sub
+  #         - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+  #         - LambdaFunction: !GetAtt ChunkDuplicateConflictDetectorLambda.Arn
+
+  # TODO: Do add invoke permissions for all lambda functions or use Role for AWS API Gateway?
+  # ChunkDuplicateConflictDetectorLambdaApiInvokePermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref ChunkDuplicateConflictDetectorLambda
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/POST/cms/analysis-reports/detect-issue-chunks # TODO: use resourceId instead
+
+  # ChunkDuplicateConflictDetectorLambdaRole:
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     RoleName: !Sub 'f2-Lambda-cms-chunk-duplicate-conflict-detector-Role-${Environment}'
+  #     AssumeRolePolicyDocument:
+  #       Version: '2012-10-17'
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal:
+  #             Service: lambda.amazonaws.com
+  #           Action: sts:AssumeRole
+  #     ManagedPolicyArns:
+  #       - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+  #       - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+  #       - !Ref JwtAuthorizerSecretGetPolicy
+  #     Policies:
+  #       - PolicyName: !Sub 'f2-Lambda-Invoke-Bedrock-Agent-Policy-${Environment}'
+  #         PolicyDocument:
+  #           Version: '2012-10-17'
+  #           Statement:
+  #             - Effect: Allow
+  #               Action:
+  #                 - bedrock:InvokeAgent
+  #               Resource: '*' # FIXME: '*' should be replaced
+
+  # =================================================================
+  # 4. CmsDocumentQuestionGenerator Lambda
+  # =================================================================
+  # TODO: Need remove this lambda from first release
+  # DocumentQuestionGeneratorLambda:
+  #   Type: AWS::Lambda::Function
+  #   Properties:
+  #     Runtime: !Ref LambdaRuntime
+  #     Handler: index.handler
+  #     Role: !GetAtt DocumentQuestionGeneratorLambdaRole.Arn
+  #     FunctionName: !Sub 'f2-cms-document-question-generator-${Environment}'
+  #     Code: ../../lambda-dist/cms-document-question-generator
+  #     Layers:
+  #       - !Ref CommonLayer
+  #     VpcConfig:
+  #       SubnetIds: !Ref PrivateSubnetIds
+  #       SecurityGroupIds:
+  #         - !Ref SecurityGroup
+  #     MemorySize: 512
+  #     Timeout: 60
+  #     Environment:
+  #       Variables:
+  #         DB_API_URL: !Ref DatabaseApiUrl
+  #         JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+  #         APP_NAME: f2
+  #         ENV: !Ref Environment
+
+  # DocumentQuestionGeneratorLambdaPostMethod:
+  #   Type: AWS::ApiGateway::Method
+  #   Properties:
+  #     RestApiId: !Ref CoreApi
+  #     ResourceId: !Ref GenerateDocumentQuestionsResource
+  #     HttpMethod: POST
+  #     ApiKeyRequired: false
+  #     AuthorizationType: 'CUSTOM'
+  #     AuthorizerId: !Ref JwtTokenAuthorizer
+  #     Integration:
+  #       Type: AWS_PROXY
+  #       Credentials: !Ref ApiGatewayLambdaExecutionRole
+  #       IntegrationHttpMethod: POST
+  #       Uri: !Sub
+  #         - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+  #         - LambdaFunction: !GetAtt DocumentQuestionGeneratorLambda.Arn
+
+  # TODO: Do add invoke permissions for all lambda functions or use Role for AWS API Gateway?
+  # DocumentQuestionGeneratorLambdaApiInvokePermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref DocumentQuestionGeneratorLambda
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/POST/cms/analysis-reports/generate-document-questions
+
+  # DocumentQuestionGeneratorLambdaRole:
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     RoleName: !Sub 'f2-Lambda-cms-document-question-generator-Role-${Environment}'
+  #     AssumeRolePolicyDocument:
+  #       Version: '2012-10-17'
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal:
+  #             Service: lambda.amazonaws.com
+  #           Action: sts:AssumeRole
+  #     ManagedPolicyArns:
+  #       - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+  #       - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+  #.      - !Ref JwtAuthorizerSecretGetPolicy
+  #     Policies:
+  #       - PolicyName: !Sub 'f2-Lambda-Invoke-Bedrock-Agent-Policy-${Environment}'
+  #         PolicyDocument:
+  #           Version: '2012-10-17'
+  #           Statement:
+  #             - Effect: Allow
+  #               Action:
+  #                 - bedrock:InvokeAgent
+  #               Resource: '*' # FIXME: '*' should be replaced
+  #       - PolicyName: !Sub 'f2-Lambda-S3-Policy-${Environment}'
+  #         PolicyDocument:
+  #           Version: '2012-10-17'
+  #           Statement:
+  #             - Effect: Allow
+  #               Action:
+  #                 - s3:ListBucket
+  #                 - s3:GetObject
+  #               Resource: '*' # FIXME: '*' should be replaced
+
+  # =================================================================
+  # 5. CmsDocumentGeneratePreSignUrls Lambda
+  # =================================================================
+  DocumentGeneratePreSignUrlsLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt DocumentGeneratePreSignUrlsLambdaRole.Arn
+      FunctionName: !Sub 'f2-cms-document-generate-pre-signed-urls-${Environment}'
+      Code: ../../lambda-dist/cms-document-generate-pre-signed-urls
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          APP_NAME: f2
+          ENV: !Ref Environment
+          CORE_BUCKET: !Ref CoreBucket
+          CMS_TEMP_FOLDER: !Ref CoreBucketCmsTempFolder
+
+  DocumentGeneratePreSignUrlsLambdaPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref GeneratePreSignUrlsResource
+      HttpMethod: POST
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !GetAtt DocumentGeneratePreSignUrlsLambda.Arn
+
+  # TODO: Do add invoke permissions for all lambda functions or use Role for AWS API Gateway?
+  # DocumentGeneratePreSignUrlsLambdaApiInvokePermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref DocumentGeneratePreSignUrlsLambda
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/POST/cms/documents/generate-pre-signed-urls
+
+  DocumentGeneratePreSignUrlsLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cms-document-generate-pre-signed-urls-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: !Sub 'f2-Lambda-S3-Integration-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource: !Sub 'arn:aws:s3:::${CoreBucket}/${CoreBucketCmsTempFolder}/*'
+
+  # =================================================================
+  # 6. CmsDocumentFinishUploadingFiles Lambda
+  # =================================================================
+  DocumentFinishUploadingFilesLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt DocumentFinishUploadingFilesLambdaRole.Arn
+      FunctionName: !Sub 'f2-cms-document-finish-uploading-files-${Environment}'
+      Code: ../../lambda-dist/cms-document-finish-uploading-files
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          DB_API_URL: !Ref DatabaseApiUrl
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+          APP_NAME: f2
+          ENV: !Ref Environment
+          CMS_BUCKET: !Ref CmsBucket
+          CORE_BUCKET: !Ref CoreBucket
+          CMS_TEMP_FOLDER: !Ref CoreBucketCmsTempFolder
+
+  DocumentFinishUploadingFilesLambdaPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref FinishUploadingFilesResource
+      HttpMethod: POST
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !GetAtt DocumentFinishUploadingFilesLambda.Arn
+
+  # TODO: Do add invoke permissions for all lambda functions or use Role for AWS API Gateway?
+  # DocumentFinishUploadingFilesLambdaApiInvokePermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref DocumentFinishUploadingFilesLambda
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/POST/cms/documents/finish-uploading-files
+
+  DocumentFinishUploadingFilesLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cms-document-finish-uploading-files-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-Lambda-S3-Integration-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub 'arn:aws:s3:::${CoreBucket}/${CoreBucketCmsTempFolder}/*'
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub 'arn:aws:s3:::${CmsBucket}/*'
+
+  # =================================================================
+  # 7. CmsDocumentListGet Lambda
+  # =================================================================
+  DocumentListGetLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: !Ref LambdaRuntime
+      Handler: index.handler
+      Role: !GetAtt DocumentListGetLambdaRole.Arn
+      FunctionName: !Sub 'f2-cms-document-list-get-${Environment}'
+      Code: ../../lambda-dist/cms-document-list-get
+      Layers:
+        - !Ref CommonLayer
+      VpcConfig:
+        SubnetIds: !Ref PrivateSubnetIds
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          DB_API_URL: !Ref DatabaseApiUrl
+          JWT_AUTHORIZER_SECRET: !Ref JwtAuthorizerSecret
+          APP_NAME: f2
+          ENV: !Ref Environment
+          CMS_BUCKET: !Ref CmsBucket
+
+  DocumentListGetLambdaGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref DocumentsListResource
+      HttpMethod: GET
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !GetAtt DocumentListGetLambda.Arn
+
+  # TODO: Do add invoke permissions for all lambda functions or use Role for AWS API Gateway?
+  # DocumentListGetLambdaApiInvokePermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     FunctionName: !Ref DocumentListGetLambda
+  #     Action: lambda:InvokeFunction
+  #     Principal: apigateway.amazonaws.com
+  #     SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CoreApi}/*/GET/cms/documents/list
+
+  DocumentListGetLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-cms-document-list-get-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - !Ref JwtAuthorizerSecretGetPolicy
+      Policies:
+        - PolicyName: !Sub 'f2-Lambda-S3-Integration-Policy-${Environment}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub 'arn:aws:s3:::${CmsBucket}/*'
+
+  # =================================================================
+  # 8. Policy to access invoke lambdas from API Gateway
+  # =================================================================
+  CmsModuleLambdaInvokePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: CmsModuleLambdaInvokeManagedPolicy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+            Resource: 
+              - !GetAtt DocumentListGetLambda.Arn
+              - !GetAtt DocumentFinishUploadingFilesLambda.Arn
+              - !GetAtt DocumentGeneratePreSignUrlsLambda.Arn
+              # - !GetAtt DocumentQuestionGeneratorLambda.Arn
+              # - !GetAtt ChunkDuplicateConflictDetectorLambda.Arn
+
+      Roles: 
+        - !Sub 
+          - "${RoleName}"
+          - RoleName: 
+              !Select [ 1, !Split [ "/", !Ref ApiGatewayLambdaExecutionRole ] ]
+
+  # =================================================================
+  # 9. Migration DB data for GA module
+  # =================================================================
+  MigrationScriptDbDateTrigger:
+    Type: Custom::MigrationScriptTrigger
+    Properties:
+      ServiceTimeout: 70
+      ServiceToken: !Ref MigrationDbScriptLambda
+      module: !Ref ModuleName
+      Version: !Ref Version
+
+  # =================================================================
+  # Policy to access to empty cms s3 bucket
+  # =================================================================
+  CmsModuleEmptyS3BucketPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub 'f2-empty-cms-s3-bucket-role-policy-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:DeleteObject
+              - s3:ListBucket
+              - s3:GetBucketVersioning
+              - s3:DeleteObjectVersion
+              - s3:ListBucketVersions
+            Resource: 
+              - !GetAtt CmsBucket.Arn
+              - !Sub "${CmsBucket.Arn}/*"
+
+      Roles: 
+        - !Sub 
+          - "${RoleName}"
+          - RoleName: 
+              !Select [ 1, !Split [ "/", !Ref EmptyS3BucketLambdaRole ] ]
+
+  # =================================================================
+  # Empty cms s3 bucket
+  # =================================================================
+  EmptyCmsS3Bucket:
+    Type: Custom::EmptyCmsS3Bucket
+    Properties:
+      ServiceToken: !Ref EmptyS3BucketLambda
+      BucketName: !Ref CmsBucket
+
+  # =================================================================
+  # 25. Outputs
+  # =================================================================
+Outputs:
+  ModuleName:
+    Value: !Ref ModuleName

@@ -1,0 +1,18 @@
+{
+    "name": "db-api-invoker",
+    "version": "1.0.0",
+    "description": "DB API Invoker",
+    "main": "index.js",
+    "type": "module",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "lint": "eslint --fix .",
+        "deploy": "node ../deploy.js",
+        "local-run": "NODE_OPTIONS=--preserve-symlinks LOCAL_RUN_EVENT=token-post node ../local-run.js"
+    },
+    "author": "ConfidencEway",
+    "license": "ISC",
+    "dependencies": {
+        "@shared-modules/f2-middlewares": "file:../_shared-modules/middlewares"
+    }
+}

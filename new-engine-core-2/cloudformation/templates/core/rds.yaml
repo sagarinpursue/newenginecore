@@ -1,0 +1,191 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: RDS Configuration
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+  VPC:
+    Type: String
+  RdsSubnetIds:
+    Type: CommaDelimitedList
+  LambdaSubnetIds:
+    Type: CommaDelimitedList
+  RdsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: ID of the Security Group used by the RDS
+  APIServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: ID of the Security Group used by the API service
+  Port:
+    Type: Number
+    Default: 5432
+  MaxCapacity:
+    Type: Number
+    Default: 2
+  PostgresVersion:
+    Type: String
+    Default: "17.5"
+
+  CommonLayer:
+    Type: String
+  LambdaRuntime:
+    Type: String
+    Default: nodejs22.x
+  Version:
+    Type: String
+    Default: '1.0.0'
+
+Resources:
+  # =================================================================
+  # 1. RDS Aurora Cluster
+  # =================================================================
+  RdsAuroraCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora-postgresql
+      EngineMode: provisioned
+      EngineVersion: !Ref PostgresVersion
+      SourceRegion: !Ref "AWS::Region"
+      DatabaseName: postgres
+      Port: !Ref Port
+      MasterUsername: !Join [ "", [ "{{resolve:secretsmanager:", !Ref MasterCredentialsSecret, ":SecretString:username}}" ] ]
+      MasterUserPassword: !Join [ "", [ "{{resolve:secretsmanager:", !Ref MasterCredentialsSecret, ":SecretString:password}}" ] ]
+      VpcSecurityGroupIds:
+        - !Ref RdsSecurityGroup
+      DBSubnetGroupName: !Ref RdsSubnetGroup
+      ServerlessV2ScalingConfiguration:
+        MaxCapacity: !Ref MaxCapacity
+        MinCapacity: 0.5
+      BackupRetentionPeriod: 1
+      DeletionProtection: false
+      StorageEncrypted: true
+
+  # =================================================================
+  # 2. RDS Aurora Instances
+  # =================================================================
+  RdsAuroraInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBClusterIdentifier: !Ref RdsAuroraCluster
+      DBInstanceClass: db.serverless
+      Engine: aurora-postgresql
+
+  # =================================================================
+  # 3. RDS Subnet Groups
+  # =================================================================
+  RdsSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnets for Aurora cluster
+      DBSubnetGroupName: !Sub 'f2-rds-subnet-group-${Environment}'
+      SubnetIds: !Ref RdsSubnetIds
+
+  # =================================================================
+  # 4. Update RDS Security Groups
+  # =================================================================
+  AllowAccessToRDSFromAPIServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref RdsSecurityGroup
+      IpProtocol: tcp
+      FromPort: !Ref Port
+      ToPort: !Ref Port
+      SourceSecurityGroupId: !Ref APIServiceSecurityGroup
+
+  # =================================================================
+  # 5. RDS Master Credentials Secret
+  # =================================================================
+  MasterCredentialsSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub 'f2-${Environment}/db/master-credentials'
+      GenerateSecretString:
+        GenerateStringKey: password
+        ExcludePunctuation: true
+        PasswordLength: 20
+        SecretStringTemplate: "{\"username\":\"postgres\"}"
+
+  # =================================================================
+  # 6. Migration Lambda script to prepare environment to RDS
+  # =================================================================
+  MigrationLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-clf-migration-db-script-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+      Policies:
+        - PolicyName: LambdaSecretsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: 
+                  - !Ref MasterCredentialsSecret
+  
+  MigrationDbScriptLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'f2-clf-migration-db-script-${Environment}'
+      Handler: index.handler
+      Role: !GetAtt MigrationLambdaExecutionRole.Arn
+      Runtime: !Ref LambdaRuntime
+      Layers:
+        - !Ref CommonLayer
+      Timeout: 60
+      Environment:
+        Variables:
+          NODE_EXTRA_CA_CERTS: /var/runtime/ca-cert.pem
+          ENVIRONMENT: !Ref Environment
+          DB_HOST: !GetAtt RdsAuroraCluster.Endpoint.Address
+          DB_PORT: !GetAtt RdsAuroraCluster.Endpoint.Port
+          DB_DATABASE: postgres
+          MASTER_CREDENTIALS_SECRET: !Sub 'f2-${Environment}/db/master-credentials'
+      Code: ../../lambda-dist/_cloudformation-scripts/migration-postgresql # ! <--- Locale path to 'aws cloudformation package'
+      VpcConfig:
+        SubnetIds: !Ref LambdaSubnetIds
+        SecurityGroupIds:
+          - !Ref APIServiceSecurityGroup
+
+  MigrationScriptTrigger:
+    Type: Custom::MigrationScriptTrigger
+    DependsOn: 
+      - RdsAuroraInstance
+    Properties:
+      ServiceTimeout: 70
+      ServiceToken: !GetAtt MigrationDbScriptLambda.Arn
+      Version: !Ref Version
+
+  # =================================================================
+  # 7. Outputs
+  # =================================================================
+Outputs:
+  RdsClusterArn:
+    Description: ARN DB cluster
+    Value: !GetAtt RdsAuroraCluster.DBClusterArn
+  RdsClusterId:
+    Description: ID DB cluster
+    Value: !Ref RdsAuroraCluster
+  RdsClusterEndpoint:
+    Description: Primary endpoint for the DB cluster
+    Value: !GetAtt RdsAuroraCluster.Endpoint.Address
+  RdsClusterPort:
+    Description: Primary port for the DB cluster
+    Value: !GetAtt RdsAuroraCluster.Endpoint.Port
+  MasterCredentialsSecret:
+    Description: "Name of Master Credentials Secret"
+    Value: !Sub 'f2-${Environment}/db/master-credentials'
+  MigrationDbScriptLambda:
+    Description: "Migration DB Script Lambda"
+    Value: !GetAtt MigrationDbScriptLambda.Arn

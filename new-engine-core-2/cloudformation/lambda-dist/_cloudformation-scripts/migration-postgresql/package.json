@@ -1,0 +1,23 @@
+{
+    "name": "f2-initial-scripts-prepare-ec2-environment",
+    "version": "1.0.0",
+    "description": "Prepare EC2 environment",
+    "main": "index.js",
+    "type": "module",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "lint": "eslint --fix .",
+        "deploy": "node ../deploy.js",
+        "local-run": "REGION='us-east-2' PROFILE='f2-dev' MASTER_CREDENTIALS_SECRET='test' node test.js"
+    },
+    "author": "Artem Strogalev <astrogalev@confidenceway.com>",
+    "license": "ISC",
+    "dependencies": {
+        "@shared-modules/f2-middlewares": "file:../../_shared-modules/middlewares",
+        "pg": "^8.16.3",
+        "pg-format": "^1.0.4"
+    },
+    "devDependencies": {
+        "@aws-sdk/client-secrets-manager": "^3.741.0"
+    }
+}

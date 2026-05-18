@@ -1,0 +1,713 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  accountId       String  @id @default(uuid(4))
+  accountNameEn   String?
+  accountNameAr   String?
+  accountCode     String  @unique
+  emailToReminder String?
+
+  userProfile         UserProfile[]
+  chatAgent           ChatAgent[]
+  chatConnectInstance ChatConnectInstance[]
+  chatAiAgent         ChatAiAgent[]
+  chatChannel         ChatChannel[]
+  chatBot             ChatBot[]
+  chatSession         ChatSession[]
+  chat                Chat[]
+  LlmDataSource       LlmDataSource[]
+  LlmPromptDriver     LlmPromptDriver[]
+  LlmQueryEngine      LlmQueryEngine[]
+  LlmRule             LlmRule[]
+  LlmRuleset          LlmRuleset[]
+  LlmStructure        LlmStructure[]
+  LlmTask             LlmTask[]
+
+  @@map("accounts")
+}
+
+model ChatAgent {
+  agentId  String @id @default(uuid(4))
+  username String @unique
+  password String
+
+  role ChatAgentRoleType @default(USER)
+
+  instanceId String?              @db.Uuid
+  instance   ChatConnectInstance? @relation(fields: [instanceId], references: [instanceId])
+
+  userId    String?      @db.Uuid
+  user      UserProfile? @relation(fields: [userId], references: [userId])
+  accountId String?      @db.Uuid
+  account   Account?     @relation(fields: [accountId], references: [accountId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_agents")
+}
+
+enum ChatAgentRoleType {
+  USER  @map("user")
+  ADMIN @map("admin")
+
+  @@map("chat_agent_role")
+}
+
+model ChatAiAgent {
+  aiAgentId String @id @default(uuid(4))
+
+  agentId      String
+  agentAliasId String
+
+  userId    String?      @db.Uuid
+  user      UserProfile? @relation(fields: [userId], references: [userId])
+  accountId String?      @db.Uuid
+  account   Account?     @relation(fields: [accountId], references: [accountId])
+
+  chat Chat[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_ai_agents")
+}
+
+model ChatBot {
+  chatBotId String @id @default(uuid(4))
+
+  botId      String
+  botAliasId String
+
+  userId    String?      @db.Uuid
+  user      UserProfile? @relation(fields: [userId], references: [userId])
+  accountId String?      @db.Uuid
+  account   Account?     @relation(fields: [accountId], references: [accountId])
+
+  chat Chat[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_bots")
+}
+
+model ChatChannel {
+  channelId String @id @default(uuid(4))
+
+  channel        ChatChannelType @default(WEB)
+  name           String?
+  apiKey         String?
+  domainName     String?
+  distributionId String?
+
+  userId    String?      @db.Uuid
+  user      UserProfile? @relation(fields: [userId], references: [userId])
+  accountId String?      @db.Uuid
+  account   Account?     @relation(fields: [accountId], references: [accountId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_channels")
+}
+
+enum ChatChannelType {
+  WEB       @map("web")
+  EMAIL     @map("email")
+  WORKPLACE @map("workplace")
+  SLACK     @map("slack")
+  FACEBOOK  @map("facebook")
+  MSTEAMS   @map("msteams")
+  INSTAGRAM @map("instagram")
+  WHATSAPP  @map("whatsapp")
+  TWITTER   @map("twitter")
+
+  @@map("chat_channel_type")
+}
+
+model ChatConnectContact {
+  contactId   String  @id @default(uuid(4))
+  email       String?
+  fullName    String?
+  localeId    String?
+  phoneNumber String?
+
+  sessionId String?      @db.Uuid
+  session   ChatSession? @relation(fields: [sessionId], references: [sessionId])
+
+  @@map("chat_connect_contacts")
+}
+
+model ChatConnectInstance {
+  instanceId String  @id @default(uuid(4))
+  flowId     String? @db.Uuid
+
+  streamingEndpointTopic String?
+
+  chatAgent ChatAgent[]
+
+  userId    String?      @db.Uuid
+  user      UserProfile? @relation(fields: [userId], references: [userId])
+  accountId String?      @db.Uuid
+  account   Account?     @relation(fields: [accountId], references: [accountId])
+
+  // TODO: remove it after deleting in Chat model (warning: prepare for serious changes in API)
+  chat Chat[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_connect_instances")
+}
+
+model ChatLiveChatInstance {
+  clientId       String @id
+  organisationId String @db.Uuid
+  accountId      String @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_live_chat_instances")
+}
+
+model ChatLiveChatSession {
+  chatId              String   @id
+  email               String?
+  fullName            String?
+  phoneNumber         String?
+  isActive            Boolean?
+  entityId            String?  @db.Uuid
+  organisationId      String?  @db.Uuid
+  customerAccessToken String?
+
+  sessionId String?      @unique @db.Uuid
+  session   ChatSession? @relation(fields: [sessionId], references: [sessionId])
+
+  chatLiveChatThread ChatLiveChatThread[]
+
+  expiresAt DateTime? @default(now()) @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime? @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_live_chat_sessions")
+}
+
+model ChatLiveChatThread {
+  threadId String @id
+
+  chatId          String?
+  liveChatSession ChatLiveChatSession? @relation(fields: [chatId], references: [chatId])
+
+  sessionId String?      @db.Uuid
+  session   ChatSession? @relation(fields: [sessionId], references: [sessionId])
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime? @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_live_chat_threads")
+}
+
+model ChatMessageFeedback {
+  chatMessageFeedbackId String @id @default(uuid(4))
+
+  feedbackReason String
+  feedbackText   String?
+
+  chatMessageId String      @unique @db.Uuid
+  chatMessage   ChatMessage @relation(fields: [chatMessageId], references: [chatMessageId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_message_feedbacks")
+}
+
+model ChatMessageRating {
+  chatMessageRatingId String @id @default(uuid(4))
+
+  rating ChatMessageRatingType
+
+  chatMessageId String      @unique @db.Uuid
+  chatMessage   ChatMessage @relation(fields: [chatMessageId], references: [chatMessageId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_message_ratings")
+}
+
+enum ChatMessageRatingType {
+  UPVOTE   @map("upvote")
+  DOWNVOTE @map("downvote")
+  PENDING  @map("pending")
+
+  @@map("chat_message_rating_type")
+}
+
+model ChatMessageReport {
+  chatMessageReportId String @id @default(uuid(4))
+
+  reportReason  String
+  reportDetails String?
+  reportStatus  String
+
+  chatMessageId String      @unique @db.Uuid
+  chatMessage   ChatMessage @relation(fields: [chatMessageId], references: [chatMessageId])
+
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_message_reports")
+}
+
+model ChatMessage {
+  chatMessageId String @id @default(uuid(4))
+
+  content     String
+  source      ChatMessageSourceType
+  messageType ChatMessageType
+
+  sessionId String      @unique @db.Uuid
+  session   ChatSession @relation(fields: [sessionId], references: [sessionId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  chatMessageFeedback ChatMessageFeedback?
+  chatMessageRating   ChatMessageRating?
+  chatMessageReport   ChatMessageReport?
+
+  @@map("chat_messages")
+}
+
+enum ChatMessageSourceType {
+  CLIENT     @map("client")
+  LEX        @map("lex")
+  AI_AGENT   @map("ai-agent")
+  LIVE_AGENT @map("live-agent")
+  SYSTEM     @map("system")
+
+  @@map("chat_message_source_type")
+}
+
+enum ChatMessageType {
+  TEXT  @map("text")
+  AUDIO @map("audio")
+  IMAGE @map("image")
+  FILE  @map("file")
+
+  @@map("chat_message_type")
+}
+
+model ChatProvider {
+  id   Int    @id @default(autoincrement())
+  name String
+  Chat Chat[]
+
+  @@map("chat_providers")
+}
+
+model ChatSessionFeedback {
+  chatSessionFeedbackId String @id @default(uuid(4))
+
+  feedbackText String
+
+  chatSessionId String      @unique @db.Uuid
+  chatSession   ChatSession @relation(fields: [chatSessionId], references: [sessionId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_session_feedbacks")
+}
+
+model ChatSessionRating {
+  chatSessionRatingId String @id @default(uuid(4))
+
+  rating Int
+
+  chatSessionId String      @unique @db.Uuid
+  chatSession   ChatSession @relation(fields: [chatSessionId], references: [sessionId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_session_ratings")
+}
+
+model ChatSession {
+  sessionId            String   @id @default(uuid(4))
+  connectionToken      String?
+  isLiveAgentConnected Boolean? @default(false)
+
+  chatId String @db.Uuid
+  chat   Chat   @relation(fields: [chatId], references: [chatId])
+
+  accountId String?  @db.Uuid
+  account   Account? @relation(fields: [accountId], references: [accountId])
+
+  chatConnectContact  ChatConnectContact[]
+  chatMessage         ChatMessage?
+  chatSessionFeedback ChatSessionFeedback?
+  chatSessionRating   ChatSessionRating?
+  chatLiveChatSession ChatLiveChatSession?
+  ChatLiveChatThread  ChatLiveChatThread[]
+
+  @@map("chat_sessions")
+}
+
+model Chat {
+  chatId String @id @default(uuid(4))
+
+  name String @unique
+
+  chatInstanceId String?
+  chatProviderId Int?
+  chatProvider   ChatProvider? @relation(fields: [chatProviderId], references: [id])
+
+  // TODO: remove this field (warning: prepare for serious changes in API)
+  instanceId String?              @db.Uuid
+  instance   ChatConnectInstance? @relation(fields: [instanceId], references: [instanceId])
+
+  // TODO: remove these fields, instead create one fields for all bot, agent, whatever (warning: prepare for serious changes in API)
+  botId     String?      @db.Uuid
+  bot       ChatBot?     @relation(fields: [botId], references: [chatBotId])
+  aiAgentId String?      @db.Uuid
+  agent     ChatAiAgent? @relation(fields: [aiAgentId], references: [aiAgentId])
+
+  userId    String?      @db.Uuid
+  user      UserProfile? @relation(fields: [userId], references: [userId])
+  accountId String?      @db.Uuid
+  account   Account?     @relation(fields: [accountId], references: [accountId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  chatSession ChatSession[]
+
+  @@map("chats")
+}
+
+model CmsAnalysisIssue {
+  issueId  String  @id @default(uuid(4))
+  question String
+  summary  String?
+
+  issueType CmsAnalysisIssueType
+
+  reportId String            @db.Uuid
+  report   CmsAnalysisReport @relation(fields: [reportId], references: [reportId])
+
+  cmsIssueChunk CmsIssueChunk[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("cms_analysis_issues")
+}
+
+enum CmsAnalysisIssueType {
+  CONFLICT  @map("conflict")
+  DUPLICATE @map("duplicate")
+
+  @@map("cms_analysis_issue_type")
+}
+
+model CmsAnalysisReport {
+  reportId String @id @default(uuid(4))
+
+  status CmsAnalysisReportStatusType
+
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @default(now()) @db.Timestamptz(3)
+  completedAt DateTime? @db.Timestamptz(3)
+
+  cmsAnalysisIssue    CmsAnalysisIssue[]
+  cmsDocumentQuestion CmsDocumentQuestion[]
+
+  @@map("cms_analysis_reports")
+}
+
+enum CmsAnalysisReportStatusType {
+  PROCESSING @map("processing")
+  COMPLETED  @map("completed")
+  FAILED     @map("failed")
+
+  @@map("cms_analysis_report_status_type")
+}
+
+model CmsDocumentQuestion {
+  questionId String @id @default(uuid(4))
+  questions  String // TODO: String[]
+  s3Uri      String
+
+  reportId String            @db.Uuid
+  report   CmsAnalysisReport @relation(fields: [reportId], references: [reportId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("cms_document_questions")
+}
+
+model CmsIssueChunk {
+  chunkId String @id @default(uuid(4))
+
+  s3Uri      String
+  extChunkId String
+
+  issueId String           @db.Uuid
+  issue   CmsAnalysisIssue @relation(fields: [issueId], references: [issueId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("cms_issue_chunks")
+}
+
+model LlmDataSource {
+  llmDataSourceId String @id @default(uuid(4))
+
+  name             String @db.VarChar()
+  url              String @db.VarChar()
+  chunkSize        Int    @db.SmallInt
+  embeddingsModel  String @db.VarChar()
+  knowledgeBaseId  String @db.VarChar()
+  dataSourceId     String @db.VarChar()
+  ingestionJobId   String @db.VarChar()
+  chunkingStrategy String @db.VarChar()
+  opensearchIndex  String @db.VarChar()
+  s3Folder         String @db.VarChar()
+
+  type llmDataSourceType
+
+  userId    String      @db.Uuid
+  user      UserProfile @relation(fields: [userId], references: [userId])
+  accountId String      @db.Uuid
+  account   Account     @relation(fields: [accountId], references: [accountId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("llm_data_sources")
+}
+
+enum llmDataSourceType {
+  S3  @map("S3")
+  WEB @map("WEB")
+
+  @@map("llm_data_source_type")
+}
+
+// TODO: maybe we need to add @db.Uuid for every primary key
+model LlmLog {
+  llmLogId String @id @default(uuid(4))
+
+  sessionId String   @db.Uuid
+  question  String
+  answer    String
+  sources   String[]
+
+  llmStructureId String       @db.Uuid
+  llmStructure   LlmStructure @relation(fields: [llmStructureId], references: [llmStructureId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("llm_logs")
+}
+
+model LlmPromptDriver {
+  llmPromptDriverId String @id @default(uuid(4))
+
+  name  String @db.VarChar()
+  type  String @db.VarChar()
+  model String @db.VarChar()
+
+  topP        Float
+  temperature Float
+
+  llmTaskId String      @db.Uuid
+  llmTask   LlmTask     @relation(fields: [llmTaskId], references: [llmTaskId])
+  userId    String      @db.Uuid
+  user      UserProfile @relation(fields: [userId], references: [userId])
+  accountId String      @db.Uuid
+  account   Account     @relation(fields: [accountId], references: [accountId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("llm_prompt_drivers")
+}
+
+model LlmQueryEngine {
+  llmQueryEngineId String @id @default(uuid(4))
+
+  name              String  @db.VarChar()
+  embeddingDriver   String? @db.VarChar()
+  namespace         String  @db.VarChar()
+  vectorStoreDriver String  @db.VarChar()
+  topN              Int     @db.SmallInt
+
+  useRagApi       Boolean @default(false)
+  useHybridSearch Boolean @default(false)
+
+  llmTaskId String      @db.Uuid
+  llmTask   LlmTask     @relation(fields: [llmTaskId], references: [llmTaskId])
+  userId    String      @db.Uuid
+  user      UserProfile @relation(fields: [userId], references: [userId])
+  accountId String      @db.Uuid
+  account   Account     @relation(fields: [accountId], references: [accountId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("llm_query_engines")
+}
+
+model LlmRule {
+  llmRuleId String @id @default(uuid(4))
+
+  name  String @db.VarChar()
+  value String @db.VarChar()
+
+  llmRulesetId String      @db.Uuid
+  llmRuleset   LlmRuleset  @relation(fields: [llmRulesetId], references: [llmRulesetId])
+  userId       String      @db.Uuid
+  user         UserProfile @relation(fields: [userId], references: [userId])
+  accountId    String      @db.Uuid
+  account      Account     @relation(fields: [accountId], references: [accountId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("llm_rules")
+}
+
+model LlmRuleset {
+  llmRulesetId String @id @default(uuid(4))
+
+  name String @db.VarChar()
+
+  llmTaskId String      @db.Uuid
+  llmTask   LlmTask     @relation(fields: [llmTaskId], references: [llmTaskId])
+  userId    String      @db.Uuid
+  user      UserProfile @relation(fields: [userId], references: [userId])
+  accountId String      @db.Uuid
+  account   Account     @relation(fields: [accountId], references: [accountId])
+
+  llmRule LlmRule[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("llm_rulesets")
+}
+
+model LlmStructureSharedToken {
+  llmStructureSharedTokenId String @id @default(uuid(4))
+
+  description String? @db.VarChar()
+  sharedToken String  @unique @default(uuid(4)) @db.VarChar()
+
+  llmStructureId String       @db.Uuid
+  llmStructure   LlmStructure @relation(fields: [llmStructureId], references: [llmStructureId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("llm_structure_shared_tokens")
+}
+
+model LlmStructure {
+  llmStructureId String @id @default(uuid(4))
+
+  name         String @db.VarChar()
+  type         String @db.VarChar()
+  memory       String @db.VarChar()
+  framework    String @db.VarChar()
+  memoryDriver String @db.VarChar()
+  memorySize   Int    @db.SmallInt
+
+  userId    String      @db.Uuid
+  user      UserProfile @relation(fields: [userId], references: [userId])
+  accountId String      @db.Uuid
+  account   Account     @relation(fields: [accountId], references: [accountId])
+
+  llmLog                  LlmLog[]
+  llmTask                 LlmTask[]
+  llmStructureSharedToken LlmStructureSharedToken[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("llm_structures")
+}
+
+model LlmTask {
+  llmTaskId String @id @default(uuid(4))
+
+  name              String  @db.VarChar()
+  type              String  @db.VarChar()
+  order             Int     @db.SmallInt
+  input             String  @db.VarChar()
+  assistantAppendix String? @db.VarChar()
+  preamble          String? @db.VarChar()
+
+  llmStructureId String       @db.Uuid
+  llmStructure   LlmStructure @relation(fields: [llmStructureId], references: [llmStructureId])
+  userId         String       @db.Uuid
+  user           UserProfile  @relation(fields: [userId], references: [userId])
+  accountId      String       @db.Uuid
+  account        Account      @relation(fields: [accountId], references: [accountId])
+
+  llmPromptDriver LlmPromptDriver[]
+  llmQueryEngine  LlmQueryEngine[]
+  llmRuleset      LlmRuleset[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("llm_tasks")
+}
+
+model UserProfile {
+  userId String @id @default(uuid(4))
+
+  userName String?
+  metaData Json?
+
+  userAccountId String
+  userAccount   Account @relation(fields: [userAccountId], references: [accountId])
+
+  chatAgent           ChatAgent[]
+  chatConnectInstance ChatConnectInstance[]
+  chatAiAgent         ChatAiAgent[]
+  chatChannel         ChatChannel[]
+  chatBot             ChatBot[]
+  chat                Chat[]
+  LlmDataSource       LlmDataSource[]
+  LlmPromptDriver     LlmPromptDriver[]
+  LlmQueryEngine      LlmQueryEngine[]
+  LlmRule             LlmRule[]
+  LlmRuleset          LlmRuleset[]
+  LlmStructure        LlmStructure[]
+  LlmTask             LlmTask[]
+
+  @@map("user_profiles")
+}
+

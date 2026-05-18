@@ -1,0 +1,19 @@
+{
+    "name": "ai-data-source-creator",
+    "version": "1.0.0",
+    "description": "Create data source for AI",
+    "main": "index.js",
+    "type": "module",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "lint": "eslint --fix .",
+        "deploy": "node ../deploy.js",
+        "start": "NODE_OPTIONS=--preserve-symlinks LOCAL_RUN_EVENT=base node ../local-run.js"
+    },
+    "author": "ConfidencEway",
+    "license": "ISC",
+    "dependencies": {
+        "@shared-modules/f2-db-api": "file:../_shared-modules/db-api",
+        "@shared-modules/f2-clients": "file:../_shared-modules/clients"
+    }
+}

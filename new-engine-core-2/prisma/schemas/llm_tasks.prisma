@@ -1,0 +1,26 @@
+model LlmTask {
+  llmTaskId String @id @default(uuid(4)) @db.Uuid
+
+  name              String  @db.VarChar()
+  type              String  @db.VarChar()
+  order             Int     @db.SmallInt
+  input             String  @db.VarChar()
+  assistantAppendix String? @db.VarChar()
+  preamble          String? @db.VarChar()
+
+  llmStructureId String       @db.Uuid
+  llmStructure   LlmStructure @relation(fields: [llmStructureId], references: [llmStructureId])
+  userId         String       @db.Uuid
+  user           UserProfile  @relation(fields: [userId], references: [userId])
+  accountId      String       @db.Uuid
+  account        Account      @relation(fields: [accountId], references: [accountId])
+
+  llmPromptDriver LlmPromptDriver[]
+  llmQueryEngine  LlmQueryEngine[]
+  llmRuleset      LlmRuleset[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("llm_tasks")
+}

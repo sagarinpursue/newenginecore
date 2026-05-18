@@ -1,0 +1,21 @@
+model ChatConnectInstance {
+  instanceId String  @id @default(uuid(4)) @db.Uuid
+  flowId     String? @db.Uuid
+
+  streamingEndpointTopic String?
+
+  chatAgent ChatAgent[]
+
+  userId    String?      @db.Uuid
+  user      UserProfile? @relation(fields: [userId], references: [userId])
+  accountId String?      @db.Uuid
+  account   Account?     @relation(fields: [accountId], references: [accountId])
+
+  // TODO: remove it after deleting in Chat model (warning: prepare for serious changes in API)
+  chat Chat[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_connect_instances")
+}

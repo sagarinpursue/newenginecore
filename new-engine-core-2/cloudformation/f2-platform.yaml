@@ -1,0 +1,2310 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: The Main CloudFormation Template for F2 platform 1.2.1
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+    - dev
+    - prod
+    - stage
+    Description: The environment suffix to create f2 resources with. This is 
+      only used to name resources and has no effect on behavior.
+  PostgresVersion:
+    Type: String
+    Description: The version of the Postgres database
+    Default: '17.5'
+  MaxRdsCapacity:
+    Type: Number
+    Description: The maximum number capacity of RDS Cluster
+    Default: 2
+    MinValue: 1
+  ExistingVpc:
+    Type: String
+    Description: ID of the existing VPC to deploy f2 infrastructure into. (leave
+      empty to create a new one)
+    Default: ''
+  SubnetsToRDS:
+    Type: CommaDelimitedList
+    Description: List ID of the exiting subnets to RDS
+    Default: ''
+  SubnetsToEC2:
+    Type: CommaDelimitedList
+    Description: List ID of the exiting subnets to EC2
+    Default: ''
+  SubnetsToLambda:
+    Type: CommaDelimitedList
+    Description: List ID of the exiting subnets to Lambda
+    Default: ''
+  ApiServiceInstanceType:
+    Type: String
+    Description: Select EC2 instance type for API server
+    Default: t3a.small
+  KmsKeyId:
+    Type: String
+    Description: ARN or ID existing KMS key for encryption ebs in ec2.(Optional)
+    Default: ''
+  DeployWebUi:
+    Type: String
+    Default: false
+    AllowedValues:
+    - true
+    - false
+    Description: Whether to deploy the Web UI nested stack (set to "true" to 
+      include it).
+  DeployCxStack:
+    Type: String
+    Default: false
+    AllowedValues:
+    - true
+    - false
+    Description: Whether to deploy the CX nested stack (set to "true" to include
+      it).
+  DeployCmsStack:
+    Type: String
+    Default: false
+    AllowedValues:
+    - true
+    - false
+    Description: Whether to deploy the CMS module (set to "true" to include it).
+  DefaultAdminEmail:
+    Type: String
+    Description: Default admin email address for the F2 platform
+  DefaultAdminPassword:
+    Type: String
+    Description: Default admin password for the F2 platform
+    MinLength: 12
+    NoEcho: true
+    AllowedPattern: ^(?=.*[A-Z])(?=.*[a-z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).+$
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: General Configuration
+      Parameters:
+      - Environment
+      - DefaultAdminEmail
+      - DefaultAdminPassword
+    - Label:
+        default: RDS Configuration
+      Parameters:
+      - PostgresVersion
+      - MaxRdsCapacity
+    - Label:
+        default: Existing VPC Configuration
+      Parameters:
+      - ExistingVpc
+      - SubnetsToRDS
+      - SubnetsToEC2
+      - SubnetsToLambda
+    - Label:
+        default: EC2 Configuration
+      Parameters:
+      - ApiServiceInstanceType
+      - KmsKeyId
+    - Label:
+        default: Deploy Additional Modules
+      Parameters:
+      - DeployWebUi
+      - DeployCxStack
+      - DeployCmsStack
+Conditions:
+  ShouldDeployWebUiStack:
+    Fn::Equals:
+    - Ref: DeployWebUi
+    - 'true'
+  ShouldDeployCxStack:
+    Fn::Equals:
+    - Ref: DeployCxStack
+    - 'true'
+  ShouldDeployCmsStack:
+    Fn::Equals:
+    - Ref: DeployCmsStack
+    - 'true'
+  ExistingVpcSelected:
+    Fn::Not:
+    - Fn::Equals:
+      - Ref: ExistingVpc
+      - ''
+Mappings:
+  StaticValues:
+    F2core:
+      LambdaRuntime: nodejs22.x
+      StageName: f2-api
+      Version: 1.2.1
+      CoreBucketCmsTempFolder: cms-temporary-documents
+      PortalFolder: web-ui
+  RegionMap:
+    us-east-1:
+      ArtifactBucket: f2-platform-artifacts-us-east-1-dev
+    eu-west-1:
+      ArtifactBucket: f2-platform-artifacts-eu-west-1-dev
+    us-west-2:
+      ArtifactBucket: f2-platform-artifacts-us-west-2-dev
+  EnvironmentMap:
+    prod:
+      JwtSecretName: f2-prod/auth/jwt
+    stage:
+      JwtSecretName: f2-stage/auth/jwt
+    dev:
+      JwtSecretName: f2-dev/auth/jwt
+Resources:
+  VpcStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: 
+        https://s3.us-east-1.amazonaws.com/f2-cf-artifacts/f2-platform/1.2.1-2026-05-15-22-00-06/core/2ce822b0a9bd8854a95b16fe3c2ff3bb.template
+      Parameters:
+        Version:
+          Fn::FindInMap:
+          - StaticValues
+          - F2core
+          - Version
+        Environment:
+          Ref: Environment
+        CustomerVpc:
+          Ref: ExistingVpc
+  RdsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: 
+        https://s3.us-east-1.amazonaws.com/f2-cf-artifacts/f2-platform/1.2.1-2026-05-15-22-00-06/core/cb74d281213101ad5f27df64119d4c04.template
+      Parameters:
+        Environment:
+          Ref: Environment
+        PostgresVersion:
+          Ref: PostgresVersion
+        MaxCapacity:
+          Ref: MaxRdsCapacity
+        Version:
+          Fn::FindInMap:
+          - StaticValues
+          - F2core
+          - Version
+        VPC:
+          Fn::GetAtt:
+          - VpcStack
+          - Outputs.VPC
+        RdsSubnetIds:
+          Fn::If:
+          - ExistingVpcSelected
+          - Fn::Join:
+            - ','
+            - Ref: SubnetsToRDS
+          - Fn::GetAtt:
+            - VpcStack
+            - Outputs.PrivateSubnetIds
+        LambdaSubnetIds:
+          Fn::If:
+          - ExistingVpcSelected
+          - Fn::Join:
+            - ','
+            - Ref: SubnetsToLambda
+          - Fn::GetAtt:
+            - VpcStack
+            - Outputs.PrivateSubnetIds
+        RdsSecurityGroup:
+          Fn::GetAtt:
+          - VpcStack
+          - Outputs.RdsSecurityGroup
+        APIServiceSecurityGroup:
+          Fn::GetAtt:
+          - VpcStack
+          - Outputs.APIServiceSecurityGroup
+        CommonLayer:
+          Ref: CommonLayer
+        LambdaRuntime:
+          Fn::FindInMap:
+          - StaticValues
+          - F2core
+          - LambdaRuntime
+  Ec2Stack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: 
+        https://s3.us-east-1.amazonaws.com/f2-cf-artifacts/f2-platform/1.2.1-2026-05-15-22-00-06/core/305dbe9d03d509ec8bb6bce7f46c7ed1.template
+      Parameters:
+        Environment:
+          Ref: Environment
+        PrivateBucketName:
+          Ref: CoreBucket
+        Version:
+          Fn::FindInMap:
+          - StaticValues
+          - F2core
+          - Version
+        VPC:
+          Fn::GetAtt:
+          - VpcStack
+          - Outputs.VPC
+        PrivateSubnetIds:
+          Fn::If:
+          - ExistingVpcSelected
+          - Fn::Join:
+            - ','
+            - Ref: SubnetsToEC2
+          - Fn::GetAtt:
+            - VpcStack
+            - Outputs.PrivateSubnetIds
+        APIServiceSecurityGroup:
+          Fn::GetAtt:
+          - VpcStack
+          - Outputs.APIServiceSecurityGroup
+        AlbSecurityGroup:
+          Fn::GetAtt:
+          - VpcStack
+          - Outputs.AlbSecurityGroup
+        JwtAuthorizerSecret:
+          Fn::FindInMap:
+          - EnvironmentMap
+          - Ref: Environment
+          - JwtSecretName
+        MasterCredentialsSecret:
+          Fn::GetAtt:
+          - RdsStack
+          - Outputs.MasterCredentialsSecret
+        RdsClusterEndpoint:
+          Fn::GetAtt:
+          - RdsStack
+          - Outputs.RdsClusterEndpoint
+        RdsClusterPort:
+          Fn::GetAtt:
+          - RdsStack
+          - Outputs.RdsClusterPort
+        CommonLayer:
+          Ref: CommonLayer
+        LambdaRuntime:
+          Fn::FindInMap:
+          - StaticValues
+          - F2core
+          - LambdaRuntime
+        InstanceType:
+          Ref: ApiServiceInstanceType
+        KmsKeyId:
+          Ref: KmsKeyId
+  WebUIStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: ShouldDeployWebUiStack
+    Properties:
+      TemplateURL: 
+        https://s3.us-east-1.amazonaws.com/f2-cf-artifacts/f2-platform/1.2.1-2026-05-15-22-00-06/core/999d4bf8966ef52f73d26aa9bf04fdd1.template
+      Parameters:
+        Environment:
+          Ref: Environment
+        Version:
+          Fn::FindInMap:
+          - StaticValues
+          - F2core
+          - Version
+        PrivateBucketName:
+          Ref: CoreBucket
+        PortalFolder:
+          Fn::FindInMap:
+          - StaticValues
+          - F2core
+          - PortalFolder
+  CxStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: ShouldDeployCxStack
+    DependsOn:
+    - AiStack
+    Properties:
+      TemplateURL:
+        Fn::Sub:
+        - https://s3.${AWS::Region}.amazonaws.com/${ArtifactBucket}/f2-platform/${Version}/cx/template.yaml
+        - Version:
+            Fn::FindInMap:
+            - StaticValues
+            - F2core
+            - Version
+          ArtifactBucket:
+            Fn::FindInMap:
+            - RegionMap
+            - Ref: AWS::Region
+            - ArtifactBucket
+      Parameters:
+        Environment:
+          Ref: Environment
+        VPC:
+          Fn::GetAtt:
+          - VpcStack
+          - Outputs.VPC
+        PrivateSubnetIds:
+          Fn::If:
+          - ExistingVpcSelected
+          - Fn::Join:
+            - ','
+            - Ref: SubnetsToLambda
+          - Fn::GetAtt:
+            - VpcStack
+            - Outputs.PrivateSubnetIds
+        SecurityGroup:
+          Fn::GetAtt:
+          - VpcStack
+          - Outputs.CoreAppSecurityGroup
+        PrivateBucketName:
+          Ref: CoreBucket
+        Version:
+          Fn::FindInMap:
+          - StaticValues
+          - F2core
+          - Version
+        CoreApi:
+          Ref: CoreApi
+        CoreApiRootResourceId:
+          Fn::GetAtt:
+          - CoreApi
+          - RootResourceId
+        ApiGatewayStage:
+          Ref: ApiGatewayStage
+        WebhookResourceId:
+          Ref: WebhookResource
+        JwtTokenAuthorizer:
+          Ref: JwtTokenAuthorizer
+        DBProxyLambdaArn:
+          Fn::GetAtt:
+          - DBProxyLambda
+          - Arn
+        AwsInvokerLambdaArn:
+          Fn::GetAtt:
+          - AwsInvokerLambda
+          - Arn
+        DatabaseApiUrl:
+          Fn::GetAtt:
+          - Ec2Stack
+          - Outputs.LoadBalancerLink
+        JwtAuthorizerSecret:
+          Fn::FindInMap:
+          - EnvironmentMap
+          - Ref: Environment
+          - JwtSecretName
+        JwtAuthorizerSecretGetPolicy:
+          Ref: JwtAuthorizerSecretGetPolicy
+        CommonLayer:
+          Ref: CommonLayer
+        LambdaRuntime:
+          Fn::FindInMap:
+          - StaticValues
+          - F2core
+          - LambdaRuntime
+        MigrationDbScriptLambda:
+          Fn::GetAtt:
+          - RdsStack
+          - Outputs.MigrationDbScriptLambda
+        ApiGatewayLambdaExecutionRole:
+          Fn::GetAtt:
+          - ApiGatewayLambdaExecutionRole
+          - Arn
+  AiStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: 
+        https://s3.us-east-1.amazonaws.com/f2-cf-artifacts/f2-platform/1.2.1-2026-05-15-22-00-06/core/12b74c29623999283bfc39212af34b8f.template
+      Parameters:
+        Environment:
+          Ref: Environment
+        CoreVPC:
+          Fn::GetAtt:
+          - VpcStack
+          - Outputs.VPC
+        PrivateSubnetIds:
+          Fn::If:
+          - ExistingVpcSelected
+          - Fn::Join:
+            - ','
+            - Ref: SubnetsToLambda
+          - Fn::GetAtt:
+            - VpcStack
+            - Outputs.PrivateSubnetIds
+        SecurityGroup:
+          Fn::GetAtt:
+          - VpcStack
+          - Outputs.CoreAppSecurityGroup
+        Version:
+          Fn::FindInMap:
+          - StaticValues
+          - F2core
+          - Version
+        LoadBalancerLink:
+          Fn::GetAtt:
+          - Ec2Stack
+          - Outputs.LoadBalancerLink
+        JwtAuthorizerSecret:
+          Fn::FindInMap:
+          - EnvironmentMap
+          - Ref: Environment
+          - JwtSecretName
+        JwtAuthorizerSecretGetPolicy:
+          Ref: JwtAuthorizerSecretGetPolicy
+        CommonLayer:
+          Ref: CommonLayer
+        LambdaRuntime:
+          Fn::FindInMap:
+          - StaticValues
+          - F2core
+          - LambdaRuntime
+        CoreApi:
+          Ref: CoreApi
+        CoreApiRootResourceId:
+          Fn::GetAtt:
+          - CoreApi
+          - RootResourceId
+        ApiGatewayStage:
+          Ref: ApiGatewayStage
+        PrivateBucketName:
+          Ref: CoreBucket
+        JwtTokenAuthorizer:
+          Ref: JwtTokenAuthorizer
+        SharedTokenAuthorizer:
+          Ref: SharedTokenAuthorizer
+        DBProxyLambdaArn:
+          Fn::GetAtt:
+          - DBProxyLambda
+          - Arn
+        AwsInvokerLambdaArn:
+          Fn::GetAtt:
+          - AwsInvokerLambda
+          - Arn
+        MigrationDbScriptLambda:
+          Fn::GetAtt:
+          - RdsStack
+          - Outputs.MigrationDbScriptLambda
+        ApiGatewayLambdaExecutionRole:
+          Fn::GetAtt:
+          - ApiGatewayLambdaExecutionRole
+          - Arn
+  CmsStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: ShouldDeployCmsStack
+    Properties:
+      TemplateURL: 
+        https://s3.us-east-1.amazonaws.com/f2-cf-artifacts/f2-platform/1.2.1-2026-05-15-22-00-06/core/52c843c90286bbd1ec6243a664d1f904.template
+      Parameters:
+        Environment:
+          Ref: Environment
+        CoreVPC:
+          Fn::GetAtt:
+          - VpcStack
+          - Outputs.VPC
+        PrivateSubnetIds:
+          Fn::If:
+          - ExistingVpcSelected
+          - Fn::Join:
+            - ','
+            - Ref: SubnetsToLambda
+          - Fn::GetAtt:
+            - VpcStack
+            - Outputs.PrivateSubnetIds
+        SecurityGroup:
+          Fn::GetAtt:
+          - VpcStack
+          - Outputs.CoreAppSecurityGroup
+        Version:
+          Fn::FindInMap:
+          - StaticValues
+          - F2core
+          - Version
+        DatabaseApiUrl:
+          Fn::GetAtt:
+          - Ec2Stack
+          - Outputs.LoadBalancerLink
+        JwtAuthorizerSecret:
+          Fn::FindInMap:
+          - EnvironmentMap
+          - Ref: Environment
+          - JwtSecretName
+        JwtAuthorizerSecretGetPolicy:
+          Ref: JwtAuthorizerSecretGetPolicy
+        CommonLayer:
+          Ref: CommonLayer
+        LambdaRuntime:
+          Fn::FindInMap:
+          - StaticValues
+          - F2core
+          - LambdaRuntime
+        CoreApi:
+          Ref: CoreApi
+        CoreApiRootResourceId:
+          Fn::GetAtt:
+          - CoreApi
+          - RootResourceId
+        CoreBucket:
+          Ref: CoreBucket
+        CoreBucketCmsTempFolder:
+          Fn::FindInMap:
+          - StaticValues
+          - F2core
+          - CoreBucketCmsTempFolder
+        JwtTokenAuthorizer:
+          Ref: JwtTokenAuthorizer
+        ApiGatewayLambdaExecutionRole:
+          Fn::GetAtt:
+          - ApiGatewayLambdaExecutionRole
+          - Arn
+        MigrationDbScriptLambda:
+          Fn::GetAtt:
+          - RdsStack
+          - Outputs.MigrationDbScriptLambda
+        EmptyS3BucketLambda:
+          Fn::GetAtt:
+          - EmptyS3BucketLambda
+          - Arn
+        EmptyS3BucketLambdaRole:
+          Fn::GetAtt:
+          - EmptyS3BucketLambdaRole
+          - Arn
+  JwtAuthorizerSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name:
+        Fn::FindInMap:
+        - EnvironmentMap
+        - Ref: Environment
+        - JwtSecretName
+      GenerateSecretString:
+        GenerateStringKey: jwtSecret
+        ExcludeCharacters: "%+~`#$&*()|[]{}:;<>?!'/@\"\\"
+        PasswordLength: 40
+        SecretStringTemplate: '{"anonKey":"","serviceRoleKey":""}'
+  GenerateJwtKeyLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: f2-clf-generate-jwt-keys-script-lambda-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: LambdaSecretsPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - secretsmanager:GetSecretValue
+            - secretsmanager:UpdateSecret
+            Resource:
+              Ref: JwtAuthorizerSecret
+  GenerateJwtKeyLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: f2-clf-generate-jwt-keys-script-${Environment}
+      Handler: index.handler
+      Role:
+        Fn::GetAtt:
+        - GenerateJwtKeyLambdaExecutionRole
+        - Arn
+      Runtime:
+        Fn::FindInMap:
+        - StaticValues
+        - F2core
+        - LambdaRuntime
+      Layers:
+      - Ref: CommonLayer
+      Timeout: 60
+      Environment:
+        Variables:
+          ENVIRONMENT:
+            Ref: Environment
+          JWT_AUTHORIZER_SECRET:
+            Fn::FindInMap:
+            - EnvironmentMap
+            - Ref: Environment
+            - JwtSecretName
+      Code:
+        S3Bucket: f2-cf-artifacts
+        S3Key: 
+          f2-platform/1.2.1-2026-05-15-22-00-06/core/b8c2c45c4bb66184fb6250965242979d
+  GenerateJwtKeyTrigger:
+    Type: Custom::GenerateJwtKey
+    Properties:
+      ServiceTimeout: 70
+      ServiceToken:
+        Fn::GetAtt:
+        - GenerateJwtKeyLambda
+        - Arn
+      JwtAuthorizerSecretArn:
+        Ref: JwtAuthorizerSecret
+  JwtAuthorizerSecretGetPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName:
+        Fn::Sub: f2-core-jwt-authorizer-secret-get-policy-${Environment}
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action: secretsmanager:GetSecretValue
+          Resource:
+            Ref: JwtAuthorizerSecret
+  CoreBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName:
+        Fn::Sub:
+        - f2-platform-${UniqueId}-${Environment}
+        - UniqueId:
+            Fn::Select:
+            - 2
+            - Fn::Split:
+              - /
+              - Ref: AWS::StackId
+      AccessControl: Private
+      LifecycleConfiguration:
+        Fn::If:
+        - ShouldDeployCmsStack
+        - Rules:
+          - Id: ClearTemporaryDocumentsToFolderCms
+            Status: Enabled
+            Prefix:
+              Fn::Sub:
+              - ${CmsTempFolder}/
+              - CmsTempFolder:
+                  Fn::FindInMap:
+                  - StaticValues
+                  - F2core
+                  - CoreBucketCmsTempFolder
+            ExpirationInDays: 1
+        - Ref: AWS::NoValue
+      CorsConfiguration:
+        Fn::If:
+        - ShouldDeployCmsStack
+        - CorsRules:
+          - AllowedHeaders:
+            - '*'
+            AllowedMethods:
+            - PUT
+            AllowedOrigins:
+            - http://localhost:4200
+            - https://*.cloudfront.net
+        - Ref: AWS::NoValue
+  DBProxyLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: f2-core-db-api-proxy-lambda-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+      - Ref: JwtAuthorizerSecretGetPolicy
+  DBProxyLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: f2-core-db-api-proxy-${Environment}
+      Runtime:
+        Fn::FindInMap:
+        - StaticValues
+        - F2core
+        - LambdaRuntime
+      Handler: index.handler
+      Code:
+        S3Bucket: f2-cf-artifacts
+        S3Key: 
+          f2-platform/1.2.1-2026-05-15-22-00-06/core/45d253943e4387ec9bc7e1e793c39669
+      Layers:
+      - Ref: CommonLayer
+      Timeout: 30
+      MemorySize: 512
+      Environment:
+        Variables:
+          ENVIRONMENT:
+            Ref: Environment
+          DB_API_URL:
+            Fn::GetAtt:
+            - Ec2Stack
+            - Outputs.LoadBalancerLink
+          JWT_AUTHORIZER_SECRET:
+            Fn::FindInMap:
+            - EnvironmentMap
+            - Ref: Environment
+            - JwtSecretName
+      Role:
+        Fn::GetAtt:
+        - DBProxyLambdaRole
+        - Arn
+      VpcConfig:
+        SubnetIds:
+          Fn::If:
+          - ExistingVpcSelected
+          - Ref: SubnetsToLambda
+          - Fn::Split:
+            - ','
+            - Fn::GetAtt:
+              - VpcStack
+              - Outputs.PrivateSubnetIds
+        SecurityGroupIds:
+        - Fn::GetAtt:
+          - VpcStack
+          - Outputs.CoreAppSecurityGroup
+  AuthResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId:
+        Ref: CoreApi
+      ParentId:
+        Fn::GetAtt:
+        - CoreApi
+        - RootResourceId
+      PathPart: auth
+  TokenResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId:
+        Fn::GetAtt:
+        - CoreApi
+        - RootResourceId
+      PathPart: token
+      RestApiId:
+        Ref: CoreApi
+  OptionsTokenApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId:
+        Ref: CoreApi
+      ResourceId:
+        Ref: TokenResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: "'*'"
+            method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+            method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+          ResponseTemplates:
+            application/json: ''
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+      - StatusCode: 200
+        ResponseParameters:
+          method.response.header.Access-Control-Allow-Origin: true
+          method.response.header.Access-Control-Allow-Methods: true
+          method.response.header.Access-Control-Allow-Headers: true
+  PostTokenApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: POST
+      ResourceId:
+        Ref: TokenResource
+      RestApiId:
+        Ref: CoreApi
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Credentials:
+          Fn::GetAtt:
+          - ApiGatewayLambdaExecutionRole
+          - Arn
+        Uri:
+          Fn::Sub: 
+            arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DBProxyLambda.Arn}/invocations
+  ForgotPasswordResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId:
+        Ref: CoreApi
+      ParentId:
+        Ref: AuthResource
+      PathPart: forgot-password
+  ForgotPasswordOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId:
+        Ref: CoreApi
+      ResourceId:
+        Ref: ForgotPasswordResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: "'*'"
+            method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+            method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+          ResponseTemplates:
+            application/json: ''
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+      - StatusCode: 200
+        ResponseParameters:
+          method.response.header.Access-Control-Allow-Origin: true
+          method.response.header.Access-Control-Allow-Methods: true
+          method.response.header.Access-Control-Allow-Headers: true
+  ForgotPasswordLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: f2-core-forgot-password-lambda-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+      - Ref: JwtAuthorizerSecretGetPolicy
+      Policies:
+      - PolicyName:
+          Fn::Sub: f2-ses-sending-email-policy-${Environment}
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: ses:SendEmail
+            Resource:
+              Fn::Sub: 
+                arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/*
+  ForgotPasswordLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime:
+        Fn::FindInMap:
+        - StaticValues
+        - F2core
+        - LambdaRuntime
+      Handler: index.handler
+      Role:
+        Fn::GetAtt:
+        - ForgotPasswordLambdaRole
+        - Arn
+      FunctionName:
+        Fn::Sub: f2-core-forgot-password-${Environment}
+      Code:
+        S3Bucket: f2-cf-artifacts
+        S3Key: 
+          f2-platform/1.2.1-2026-05-15-22-00-06/core/48d593804f9e65c32bae503e95408a6c
+      MemorySize: 512
+      Timeout: 30
+      Layers:
+      - Ref: CommonLayer
+      VpcConfig:
+        SubnetIds:
+          Fn::If:
+          - ExistingVpcSelected
+          - Ref: SubnetsToLambda
+          - Fn::Split:
+            - ','
+            - Fn::GetAtt:
+              - VpcStack
+              - Outputs.PrivateSubnetIds
+        SecurityGroupIds:
+        - Fn::GetAtt:
+          - VpcStack
+          - Outputs.CoreAppSecurityGroup
+      Environment:
+        Variables:
+          DB_API_URL:
+            Fn::GetAtt:
+            - Ec2Stack
+            - Outputs.LoadBalancerLink
+          JWT_AUTHORIZER_SECRET:
+            Ref: JwtAuthorizerSecret
+          PORTAL_DOMAIN:
+            Fn::If:
+            - ShouldDeployWebUiStack
+            - Fn::GetAtt:
+              - WebUIStack
+              - Outputs.CloudFrontPortalDomain
+            - none
+  ForgotPasswordLambdaPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId:
+        Ref: CoreApi
+      ResourceId:
+        Ref: ForgotPasswordResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        Credentials:
+          Fn::GetAtt:
+          - ApiGatewayLambdaExecutionRole
+          - Arn
+        IntegrationHttpMethod: POST
+        Uri:
+          Fn::Sub: 
+            arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ForgotPasswordLambda.Arn}/invocations
+  ResetPasswordResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId:
+        Ref: CoreApi
+      ParentId:
+        Ref: AuthResource
+      PathPart: reset-password
+  ResetPasswordOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId:
+        Ref: CoreApi
+      ResourceId:
+        Ref: ResetPasswordResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: "'*'"
+            method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+            method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+          ResponseTemplates:
+            application/json: ''
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+      - StatusCode: 200
+        ResponseParameters:
+          method.response.header.Access-Control-Allow-Origin: true
+          method.response.header.Access-Control-Allow-Methods: true
+          method.response.header.Access-Control-Allow-Headers: true
+  ResetPasswordLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: f2-core-reset-password-lambda-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+      - Ref: JwtAuthorizerSecretGetPolicy
+  ResetPasswordLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime:
+        Fn::FindInMap:
+        - StaticValues
+        - F2core
+        - LambdaRuntime
+      Handler: index.handler
+      Role:
+        Fn::GetAtt:
+        - ResetPasswordLambdaRole
+        - Arn
+      FunctionName:
+        Fn::Sub: f2-core-reset-password-${Environment}
+      Code:
+        S3Bucket: f2-cf-artifacts
+        S3Key: 
+          f2-platform/1.2.1-2026-05-15-22-00-06/core/20361a4096d71b4eb8099c97d4ece1e8
+      MemorySize: 512
+      Timeout: 30
+      Layers:
+      - Ref: CommonLayer
+      VpcConfig:
+        SubnetIds:
+          Fn::If:
+          - ExistingVpcSelected
+          - Ref: SubnetsToLambda
+          - Fn::Split:
+            - ','
+            - Fn::GetAtt:
+              - VpcStack
+              - Outputs.PrivateSubnetIds
+        SecurityGroupIds:
+        - Fn::GetAtt:
+          - VpcStack
+          - Outputs.CoreAppSecurityGroup
+      Environment:
+        Variables:
+          DB_API_URL:
+            Fn::GetAtt:
+            - Ec2Stack
+            - Outputs.LoadBalancerLink
+          JWT_AUTHORIZER_SECRET:
+            Ref: JwtAuthorizerSecret
+  ResetPasswordPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: POST
+      ResourceId:
+        Ref: ResetPasswordResource
+      RestApiId:
+        Ref: CoreApi
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Credentials:
+          Fn::GetAtt:
+          - ApiGatewayLambdaExecutionRole
+          - Arn
+        Uri:
+          Fn::Sub: 
+            arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ResetPasswordLambda.Arn}/invocations
+  AccountResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId:
+        Fn::GetAtt:
+        - CoreApi
+        - RootResourceId
+      PathPart: account
+      RestApiId:
+        Ref: CoreApi
+  AccountListResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId:
+        Ref: AccountResource
+      PathPart: list
+      RestApiId:
+        Ref: CoreApi
+  OptionsAccountListApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId:
+        Ref: CoreApi
+      ResourceId:
+        Ref: AccountListResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: "'*'"
+            method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+            method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+          ResponseTemplates:
+            application/json: ''
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+      - StatusCode: 200
+        ResponseParameters:
+          method.response.header.Access-Control-Allow-Origin: true
+          method.response.header.Access-Control-Allow-Methods: true
+          method.response.header.Access-Control-Allow-Headers: true
+  GetAccountListApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: GET
+      ResourceId:
+        Ref: AccountListResource
+      RestApiId:
+        Ref: CoreApi
+      AuthorizationType: CUSTOM
+      AuthorizerId:
+        Ref: JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Credentials:
+          Fn::GetAtt:
+          - ApiGatewayLambdaExecutionRole
+          - Arn
+        Uri:
+          Fn::Sub: 
+            arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DBProxyLambda.Arn}/invocations
+  UserResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId:
+        Fn::GetAtt:
+        - CoreApi
+        - RootResourceId
+      PathPart: user
+      RestApiId:
+        Ref: CoreApi
+  OptionsUserApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId:
+        Ref: CoreApi
+      ResourceId:
+        Ref: UserResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: "'*'"
+            method.response.header.Access-Control-Allow-Methods: "'GET,PUT,PATCH,POST,DELETE,OPTIONS'"
+            method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+          ResponseTemplates:
+            application/json: ''
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+      - StatusCode: 200
+        ResponseParameters:
+          method.response.header.Access-Control-Allow-Origin: true
+          method.response.header.Access-Control-Allow-Methods: true
+          method.response.header.Access-Control-Allow-Headers: true
+  GetUserApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: GET
+      ResourceId:
+        Ref: UserResource
+      RestApiId:
+        Ref: CoreApi
+      AuthorizationType: CUSTOM
+      AuthorizerId:
+        Ref: JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Credentials:
+          Fn::GetAtt:
+          - ApiGatewayLambdaExecutionRole
+          - Arn
+        Uri:
+          Fn::Sub: 
+            arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DBProxyLambda.Arn}/invocations
+  PutUserApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: PUT
+      ResourceId:
+        Ref: UserResource
+      RestApiId:
+        Ref: CoreApi
+      AuthorizationType: CUSTOM
+      AuthorizerId:
+        Ref: JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Credentials:
+          Fn::GetAtt:
+          - ApiGatewayLambdaExecutionRole
+          - Arn
+        Uri:
+          Fn::Sub: 
+            arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DBProxyLambda.Arn}/invocations
+  PostUserApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: POST
+      ResourceId:
+        Ref: UserResource
+      RestApiId:
+        Ref: CoreApi
+      AuthorizationType: CUSTOM
+      AuthorizerId:
+        Ref: JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Credentials:
+          Fn::GetAtt:
+          - ApiGatewayLambdaExecutionRole
+          - Arn
+        Uri:
+          Fn::Sub: 
+            arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UserPostLambda.Arn}/invocations
+  PatchUserApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: PATCH
+      ResourceId:
+        Ref: UserResource
+      RestApiId:
+        Ref: CoreApi
+      AuthorizationType: CUSTOM
+      AuthorizerId:
+        Ref: JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Credentials:
+          Fn::GetAtt:
+          - ApiGatewayLambdaExecutionRole
+          - Arn
+        Uri:
+          Fn::Sub: 
+            arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DBProxyLambda.Arn}/invocations
+  DeleteUserApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: DELETE
+      ResourceId:
+        Ref: UserResource
+      RestApiId:
+        Ref: CoreApi
+      AuthorizationType: CUSTOM
+      AuthorizerId:
+        Ref: JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Credentials:
+          Fn::GetAtt:
+          - ApiGatewayLambdaExecutionRole
+          - Arn
+        Uri:
+          Fn::Sub: 
+            arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UserDeleteLambda.Arn}/invocations
+  UserDeleteLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: f2-core-user-delete-${Environment}
+      Runtime:
+        Fn::FindInMap:
+        - StaticValues
+        - F2core
+        - LambdaRuntime
+      Handler: index.handler
+      Code:
+        S3Bucket: f2-cf-artifacts
+        S3Key: 
+          f2-platform/1.2.1-2026-05-15-22-00-06/core/90b962b37de5f6a7d5d071df82eeb8ff
+      Layers:
+      - Ref: CommonLayer
+      Timeout: 30
+      MemorySize: 512
+      Environment:
+        Variables:
+          ENVIRONMENT:
+            Ref: Environment
+          DB_API_URL:
+            Fn::GetAtt:
+            - Ec2Stack
+            - Outputs.LoadBalancerLink
+          JWT_AUTHORIZER_SECRET:
+            Fn::FindInMap:
+            - EnvironmentMap
+            - Ref: Environment
+            - JwtSecretName
+      Role:
+        Fn::GetAtt:
+        - UserDeleteLambdaRole
+        - Arn
+      VpcConfig:
+        SubnetIds:
+          Fn::If:
+          - ExistingVpcSelected
+          - Ref: SubnetsToLambda
+          - Fn::Split:
+            - ','
+            - Fn::GetAtt:
+              - VpcStack
+              - Outputs.PrivateSubnetIds
+        SecurityGroupIds:
+        - Fn::GetAtt:
+          - VpcStack
+          - Outputs.CoreAppSecurityGroup
+  UserDeleteLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: f2-core-user-delete-lambda-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+      - Ref: JwtAuthorizerSecretGetPolicy
+  UserPostLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: f2-core-user-post-${Environment}
+      Runtime:
+        Fn::FindInMap:
+        - StaticValues
+        - F2core
+        - LambdaRuntime
+      Handler: index.handler
+      Code:
+        S3Bucket: f2-cf-artifacts
+        S3Key: 
+          f2-platform/1.2.1-2026-05-15-22-00-06/core/f6fb5aed3f4090a10b1915f8c8b33ef5
+      Layers:
+      - Ref: CommonLayer
+      Timeout: 30
+      MemorySize: 512
+      Environment:
+        Variables:
+          ENV:
+            Ref: Environment
+          DB_API_URL:
+            Fn::GetAtt:
+            - Ec2Stack
+            - Outputs.LoadBalancerLink
+          JWT_AUTHORIZER_SECRET:
+            Fn::FindInMap:
+            - EnvironmentMap
+            - Ref: Environment
+            - JwtSecretName
+      Role:
+        Fn::GetAtt:
+        - UserPostLambdaRole
+        - Arn
+      VpcConfig:
+        SubnetIds:
+          Fn::If:
+          - ExistingVpcSelected
+          - Ref: SubnetsToLambda
+          - Fn::Split:
+            - ','
+            - Fn::GetAtt:
+              - VpcStack
+              - Outputs.PrivateSubnetIds
+        SecurityGroupIds:
+        - Fn::GetAtt:
+          - VpcStack
+          - Outputs.CoreAppSecurityGroup
+  UserPostLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: f2-core-user-post-lambda-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+      - Ref: JwtAuthorizerSecretGetPolicy
+  SearchPostLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: f2-search-post-lambda-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+      - Ref: JwtAuthorizerSecretGetPolicy
+      Policies:
+      - PolicyName:
+          Fn::Sub: f2-search-post-bedrock-policy-${Environment}
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - bedrock:ListAgentActionGroups
+            - bedrock:GetAgentActionGroup
+            - bedrock:ListAgentCollaborators
+            - bedrock:ListAgentKnowledgeBases
+            Resource:
+              Fn::Sub: 
+                arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:agent/*
+  SearchPostLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: f2-core-search-post-${Environment}
+      Runtime:
+        Fn::FindInMap:
+        - StaticValues
+        - F2core
+        - LambdaRuntime
+      Handler: index.handler
+      Code:
+        S3Bucket: f2-cf-artifacts
+        S3Key: 
+          f2-platform/1.2.1-2026-05-15-22-00-06/core/25a76db85657761e800d0a626b59eeff
+      Layers:
+      - Ref: CommonLayer
+      Timeout: 30
+      MemorySize: 512
+      Environment:
+        Variables:
+          ENVIRONMENT:
+            Ref: Environment
+          DB_API_URL:
+            Fn::GetAtt:
+            - Ec2Stack
+            - Outputs.LoadBalancerLink
+          JWT_AUTHORIZER_SECRET:
+            Fn::FindInMap:
+            - EnvironmentMap
+            - Ref: Environment
+            - JwtSecretName
+      Role:
+        Fn::GetAtt:
+        - SearchPostLambdaRole
+        - Arn
+      VpcConfig:
+        SubnetIds:
+          Fn::If:
+          - ExistingVpcSelected
+          - Ref: SubnetsToLambda
+          - Fn::Split:
+            - ','
+            - Fn::GetAtt:
+              - VpcStack
+              - Outputs.PrivateSubnetIds
+        SecurityGroupIds:
+        - Fn::GetAtt:
+          - VpcStack
+          - Outputs.CoreAppSecurityGroup
+  SearchResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId:
+        Ref: CoreApi
+      ParentId:
+        Fn::GetAtt:
+        - CoreApi
+        - RootResourceId
+      PathPart: search
+  SearchOptionsApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId:
+        Ref: CoreApi
+      ResourceId:
+        Ref: SearchResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: "'*'"
+            method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+            method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+          ResponseTemplates:
+            application/json: ''
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+      - StatusCode: 200
+        ResponseParameters:
+          method.response.header.Access-Control-Allow-Origin: true
+          method.response.header.Access-Control-Allow-Methods: true
+          method.response.header.Access-Control-Allow-Headers: true
+  SearchPostApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: POST
+      ResourceId:
+        Ref: SearchResource
+      RestApiId:
+        Ref: CoreApi
+      AuthorizationType: CUSTOM
+      AuthorizerId:
+        Ref: JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Credentials:
+          Fn::GetAtt:
+          - ApiGatewayLambdaExecutionRole
+          - Arn
+        Uri:
+          Fn::Sub: 
+            arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SearchPostLambda.Arn}/invocations
+  WebhookResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId:
+        Ref: CoreApi
+      ParentId:
+        Fn::GetAtt:
+        - CoreApi
+        - RootResourceId
+      PathPart: webhook
+  JwtTokenAuthorizerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: f2-core-jwt-token-authorizer-lambda-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      - Ref: JwtAuthorizerSecretGetPolicy
+  JwtTokenAuthorizerLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: f2-core-jwt-token-authorizer-${Environment}
+      Runtime:
+        Fn::FindInMap:
+        - StaticValues
+        - F2core
+        - LambdaRuntime
+      Handler: index.handler
+      Code:
+        S3Bucket: f2-cf-artifacts
+        S3Key: 
+          f2-platform/1.2.1-2026-05-15-22-00-06/core/58ecd9cdcea141417002483d4cd7d4e1
+      Environment:
+        Variables:
+          JWT_AUTHORIZER_SECRET:
+            Fn::FindInMap:
+            - EnvironmentMap
+            - Ref: Environment
+            - JwtSecretName
+      Layers:
+      - Ref: CommonLayer
+      MemorySize: 128
+      Timeout: 30
+      Role:
+        Fn::GetAtt:
+        - JwtTokenAuthorizerLambdaRole
+        - Arn
+  JwtTokenAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: JwtTokenAuthorizer
+      Type: TOKEN
+      AuthorizerCredentials:
+        Fn::GetAtt:
+        - ApiGatewayLambdaExecutionRole
+        - Arn
+      AuthorizerUri:
+        Fn::Sub:
+        - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+        - LambdaArn:
+            Fn::GetAtt:
+            - JwtTokenAuthorizerLambda
+            - Arn
+      IdentitySource: method.request.header.Authorization
+      RestApiId:
+        Ref: CoreApi
+      AuthorizerResultTtlInSeconds: 0
+  SharedTokenAuthorizerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: f2-core-shared-token-authorizer-lambda-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+      - Ref: JwtAuthorizerSecretGetPolicy
+  SharedTokenAuthorizerLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: f2-core-shared-token-authorizer-${Environment}
+      Runtime:
+        Fn::FindInMap:
+        - StaticValues
+        - F2core
+        - LambdaRuntime
+      Handler: index.handler
+      Code:
+        S3Bucket: f2-cf-artifacts
+        S3Key: 
+          f2-platform/1.2.1-2026-05-15-22-00-06/core/3180d0b7c4692ee8fe45f48bfd0702c3
+      Environment:
+        Variables:
+          ENVIRONMENT:
+            Ref: Environment
+          DB_API_URL:
+            Fn::GetAtt:
+            - Ec2Stack
+            - Outputs.LoadBalancerLink
+          JWT_AUTHORIZER_SECRET:
+            Fn::FindInMap:
+            - EnvironmentMap
+            - Ref: Environment
+            - JwtSecretName
+      Layers:
+      - Ref: CommonLayer
+      MemorySize: 128
+      Timeout: 30
+      Role:
+        Fn::GetAtt:
+        - SharedTokenAuthorizerLambdaRole
+        - Arn
+      VpcConfig:
+        SubnetIds:
+          Fn::If:
+          - ExistingVpcSelected
+          - Ref: SubnetsToLambda
+          - Fn::Split:
+            - ','
+            - Fn::GetAtt:
+              - VpcStack
+              - Outputs.PrivateSubnetIds
+        SecurityGroupIds:
+        - Fn::GetAtt:
+          - VpcStack
+          - Outputs.CoreAppSecurityGroup
+  SharedTokenAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: SharedTokenAuthorizer
+      Type: TOKEN
+      AuthorizerCredentials:
+        Fn::GetAtt:
+        - ApiGatewayLambdaExecutionRole
+        - Arn
+      AuthorizerUri:
+        Fn::Sub:
+        - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+        - LambdaArn:
+            Fn::GetAtt:
+            - SharedTokenAuthorizerLambda
+            - Arn
+      IdentitySource: method.request.header.X-Shared-Token
+      RestApiId:
+        Ref: CoreApi
+      AuthorizerResultTtlInSeconds: 0
+  AwsInvokerLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: f2-core-aws-invoker-${Environment}
+      Runtime:
+        Fn::FindInMap:
+        - StaticValues
+        - F2core
+        - LambdaRuntime
+      Handler: index.handler
+      Code:
+        S3Bucket: f2-cf-artifacts
+        S3Key: 
+          f2-platform/1.2.1-2026-05-15-22-00-06/core/320f7374f7eaae6eb7297b024d7d53bc
+      Timeout: 30
+      MemorySize: 512
+      Layers:
+      - Ref: CommonLayer
+      Role:
+        Fn::GetAtt:
+        - AwsInvokerLambdaRole
+        - Arn
+  AwsInvokerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: f2-core-aws-invoker-lambda-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+      Policies:
+      - PolicyName:
+          Fn::Sub: f2-aws-invoker-bedrock-policy-${Environment}
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - bedrock:StartIngestionJob
+            - bedrock:GetIngestionJob
+            Resource:
+              Fn::Sub: 
+                arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*
+          - Effect: Allow
+            Action:
+            - bedrock:ListFoundationModels
+            - bedrock:ListAgentActionGroups
+            - bedrock:GetAgentActionGroup
+            - bedrock:ListAgentCollaborators
+            - bedrock:GetAgent
+            - bedrock:ListAgentKnowledgeBases
+            - bedrock:AssociateAgentKnowledgeBase
+            - bedrock:UpdateAgentKnowledgeBase
+            - bedrock:DisassociateAgentKnowledgeBase
+            - bedrock:CreateAgentActionGroup
+            - bedrock:UpdateAgentActionGroup
+            - bedrock:DeleteAgentActionGroup
+            - bedrock:AssociateAgentCollaborator
+            - bedrock:UpdateAgentCollaborator
+            - bedrock:DisassociateAgentCollaborator
+            Resource: '*'
+  CommonLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName:
+        Fn::Sub: f2-core-common-layer-${Environment}
+      Description: Common layer
+      Content:
+        S3Bucket: f2-cf-artifacts
+        S3Key: 
+          f2-platform/1.2.1-2026-05-15-22-00-06/core/6a9e9fb9d9144bab309ffce8e62b2f80
+      CompatibleRuntimes:
+      - Fn::FindInMap:
+        - StaticValues
+        - F2core
+        - LambdaRuntime
+  CoreApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name:
+        Fn::Sub: f2-api-${Environment}
+      Description: Core API for f2 application
+      EndpointConfiguration:
+        Types:
+        - REGIONAL
+  ApiGatewayLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: f2-core-lambda-execution-api-gateway-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - apigateway.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Policies:
+      - PolicyName: InvokeCoreLambdaPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - lambda:InvokeFunction
+            Resource:
+            - Fn::GetAtt:
+              - JwtTokenAuthorizerLambda
+              - Arn
+            - Fn::GetAtt:
+              - SharedTokenAuthorizerLambda
+              - Arn
+            - Fn::GetAtt:
+              - AwsInvokerLambda
+              - Arn
+            - Fn::GetAtt:
+              - DBProxyLambda
+              - Arn
+            - Fn::GetAtt:
+              - ForgotPasswordLambda
+              - Arn
+            - Fn::GetAtt:
+              - ResetPasswordLambda
+              - Arn
+            - Fn::GetAtt:
+              - SearchPostLambda
+              - Arn
+            - Fn::GetAtt:
+              - UserDeleteLambda
+              - Arn
+            - Fn::GetAtt:
+              - UserPostLambda
+              - Arn
+  ApiGatewayStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName:
+        Fn::FindInMap:
+        - StaticValues
+        - F2core
+        - StageName
+      Description: Stage for Core API
+      RestApiId:
+        Ref: CoreApi
+      DeploymentId:
+        Ref: CoreApiDeployment
+  CoreApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+    - PutUserApiMethod
+    - GetUserApiMethod
+    - GetAccountListApiMethod
+    - PostTokenApiMethod
+    Properties:
+      RestApiId:
+        Ref: CoreApi
+      Description:
+        Fn::Sub:
+        - "Deployed api nested stacks:\nVersion = ${Version}\nCX     = ${CxId}\n"
+        - CxId:
+            Fn::If:
+            - ShouldDeployCxStack
+            - CxStack
+            - 'OFF'
+          Version:
+            Fn::FindInMap:
+            - StaticValues
+            - F2core
+            - Version
+  UtilApiRedeploymentLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: f2-clf-util-api-redeployment-${Environment}
+      Runtime:
+        Fn::FindInMap:
+        - StaticValues
+        - F2core
+        - LambdaRuntime
+      Handler: index.handler
+      Code:
+        S3Bucket: f2-cf-artifacts
+        S3Key: 
+          f2-platform/1.2.1-2026-05-15-22-00-06/core/b9229413f4f36b3ca48d543355e9879f
+      Layers:
+      - Ref: CommonLayer
+      Timeout: 60
+      MemorySize: 512
+      Role:
+        Fn::GetAtt:
+        - UtilApiRedeploymentLambdaRole
+        - Arn
+  UtilApiRedeploymentLambdaVersion:
+    Type: AWS::Lambda::Version
+    Properties:
+      FunctionName:
+        Ref: UtilApiRedeploymentLambda
+  UtilApiRedeploymentLambdaEventConfig:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName:
+        Ref: UtilApiRedeploymentLambda
+      MaximumRetryAttempts: 0
+      Qualifier:
+        Fn::GetAtt:
+        - UtilApiRedeploymentLambdaVersion
+        - Version
+  UtilApiRedeploymentLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: f2-util-api-redeployment-lambda-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName:
+          Fn::Sub: f2-Lambda-ApiGateway-Deployment-Policy-${Environment}
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - apigateway:CreateDeployment
+            - apigateway:POST
+            Resource:
+              Fn::Sub: 
+                arn:aws:apigateway:${AWS::Region}::/restapis/${CoreApi}/deployments
+          - Effect: Allow
+            Action:
+            - apigateway:UpdateStage
+            - apigateway:PATCH
+            Resource:
+              Fn::Sub: 
+                arn:aws:apigateway:${AWS::Region}::/restapis/${CoreApi}/stages/${ApiGatewayStage}
+          - Effect: Allow
+            Action:
+            - apigateway:GET
+            Resource:
+              Fn::Sub: 
+                arn:aws:apigateway:${AWS::Region}::/restapis/${CoreApi}/stages/${ApiGatewayStage}/exports/oas30
+          - Effect: Allow
+            Action:
+            - apigateway:GetExport
+            Resource:
+              Fn::Sub: 
+                arn:aws:apigateway:${AWS::Region}::/restapis/${CoreApi}/stages/${ApiGatewayStage}
+      - PolicyName:
+          Fn::Sub: f2-Lambda-S3-Cloudfront-Deployment-Policy-${Environment}
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - s3:PutObject
+            - s3:DeleteObject
+            Resource:
+              Fn::Sub: arn:aws:s3:::${CoreBucket}/*
+          - Fn::If:
+            - ShouldDeployWebUiStack
+            - Effect: Allow
+              Action:
+              - cloudfront:CreateInvalidation
+              Resource:
+                Fn::Sub: arn:aws:cloudfront::${AWS::AccountId}:distribution/*
+            - Ref: AWS::NoValue
+  InvokeUtilApiRedeploymentLambda:
+    Type: Custom::ApiRedeployment
+    DependsOn:
+    - DBProxyLambda
+    - AwsInvokerLambda
+    - JwtTokenAuthorizerLambda
+    - SharedTokenAuthorizerLambda
+    - UtilApiRedeploymentLambda
+    - GetAccountListApiMethod
+    - GetUserApiMethod
+    - PostTokenApiMethod
+    - PutUserApiMethod
+    - PostUserApiMethod
+    - PatchUserApiMethod
+    Properties:
+      ServiceToken:
+        Fn::GetAtt:
+        - UtilApiRedeploymentLambda
+        - Arn
+      RestApiId:
+        Ref: CoreApi
+      StageName:
+        Ref: ApiGatewayStage
+      Version:
+        Fn::FindInMap:
+        - StaticValues
+        - F2core
+        - Version
+      S3BucketName:
+        Ref: CoreBucket
+      S3ObjectKey: swagger/swagger.json
+      CloudFrontDistributionId: 'OFF'
+      Description:
+      - "Deployed modules:\nCX_MODULE_NAME = ${CxModuleName}\nCX_METHODS = ${CxMethods}\n\
+        \nAI_MODULE_NAME = ${AiModuleName}\nAI_METHODS = ${AiMethods}\n\nCMS_MODULE_NAME
+        = ${CmsModuleName}\n"
+      - CxMethods:
+          Fn::If:
+          - ShouldDeployCxStack
+          - Fn::GetAtt:
+            - CxStack
+            - Outputs.ApiMethods
+          - 'OFF'
+        AiMethods:
+          Fn::GetAtt:
+          - AiStack
+          - Outputs.ApiMethods
+        CxModuleName:
+          Fn::If:
+          - ShouldDeployCxStack
+          - Fn::GetAtt:
+            - CxStack
+            - Outputs.ModuleName
+          - 'OFF'
+        AiModuleName:
+          Fn::GetAtt:
+          - AiStack
+          - Outputs.ModuleName
+        CmsModuleName:
+          Fn::If:
+          - ShouldDeployCmsStack
+          - Fn::GetAtt:
+            - CmsStack
+            - Outputs.ModuleName
+          - 'OFF'
+  ModifyRdsDeleteProtectionLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: f2-clf-modify-rds-delete-protection-${Environment}
+      Runtime:
+        Fn::FindInMap:
+        - StaticValues
+        - F2core
+        - LambdaRuntime
+      Handler: index.handler
+      Code:
+        S3Bucket: f2-cf-artifacts
+        S3Key: 
+          f2-platform/1.2.1-2026-05-15-22-00-06/core/cd5327f1f183f4cfd71510bc48471bc6
+      Layers:
+      - Ref: CommonLayer
+      Timeout: 60
+      MemorySize: 512
+      Role:
+        Fn::GetAtt:
+        - ModifyRdsDeleteProtectionLambdaRole
+        - Arn
+  ModifyRdsDeleteProtectionLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: f2-clf-modify-rds-delete-protection-lambda-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      Policies:
+      - PolicyName: ModifyRDSClusterDeletionProtection
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - rds:ModifyDBCluster
+            Resource:
+              Fn::GetAtt:
+              - RdsStack
+              - Outputs.RdsClusterArn
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+  ModifyRdsDeleteProtection:
+    Type: Custom::ModifyRdsDeleteProtection
+    DependsOn:
+    - InvokeUtilApiRedeploymentLambda
+    Properties:
+      ServiceToken:
+        Fn::GetAtt:
+        - ModifyRdsDeleteProtectionLambda
+        - Arn
+      ClusterIdentifier:
+        Fn::GetAtt:
+        - RdsStack
+        - Outputs.RdsClusterId
+  EmptyS3BucketLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: f2-clf-empty-s3-bucket-${Environment}
+      Runtime:
+        Fn::FindInMap:
+        - StaticValues
+        - F2core
+        - LambdaRuntime
+      Handler: index.handler
+      Code:
+        S3Bucket: f2-cf-artifacts
+        S3Key: 
+          f2-platform/1.2.1-2026-05-15-22-00-06/core/762cee79e0d5fe136f27230d69102f4e
+      Layers:
+      - Ref: CommonLayer
+      Timeout: 60
+      MemorySize: 512
+      Role:
+        Fn::GetAtt:
+        - EmptyS3BucketLambdaRole
+        - Arn
+  EmptyS3BucketLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: f2-clf-empty-s3-bucket-lambda-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      Policies:
+      - PolicyName:
+          Fn::Sub: f2-empty-core-s3-bucket-role-policy-${Environment}
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - s3:DeleteObject
+            - s3:ListBucket
+            - s3:GetBucketVersioning
+            - s3:DeleteObjectVersion
+            - s3:ListBucketVersions
+            Resource:
+            - Fn::GetAtt:
+              - CoreBucket
+              - Arn
+            - Fn::Sub: ${CoreBucket.Arn}/*
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+  EmptyCoreS3Bucket:
+    Type: Custom::EmptyCoreS3Bucket
+    Properties:
+      ServiceToken:
+        Fn::GetAtt:
+        - EmptyS3BucketLambda
+        - Arn
+      BucketName:
+        Ref: CoreBucket
+  CreateDefaultAdminLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Fn::Sub: f2-clf-create-default-admin-lambda-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+      - Ref: JwtAuthorizerSecretGetPolicy
+  CreateDefaultAdminLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: f2-clf-create-default-admin-${Environment}
+      Handler: index.handler
+      Role:
+        Fn::GetAtt:
+        - CreateDefaultAdminLambdaRole
+        - Arn
+      Runtime:
+        Fn::FindInMap:
+        - StaticValues
+        - F2core
+        - LambdaRuntime
+      Code:
+        S3Bucket: f2-cf-artifacts
+        S3Key: 
+          f2-platform/1.2.1-2026-05-15-22-00-06/core/09866a7919ef7925869153c6254501ae
+      Layers:
+      - Ref: CommonLayer
+      Timeout: 60
+      VpcConfig:
+        SubnetIds:
+          Fn::If:
+          - ExistingVpcSelected
+          - Ref: SubnetsToLambda
+          - Fn::Split:
+            - ','
+            - Fn::GetAtt:
+              - VpcStack
+              - Outputs.PrivateSubnetIds
+        SecurityGroupIds:
+        - Fn::GetAtt:
+          - VpcStack
+          - Outputs.CoreAppSecurityGroup
+      Environment:
+        Variables:
+          ENVIRONMENT:
+            Ref: Environment
+          JWT_AUTHORIZER_SECRET:
+            Fn::FindInMap:
+            - EnvironmentMap
+            - Ref: Environment
+            - JwtSecretName
+          DB_API_URL:
+            Fn::GetAtt:
+            - Ec2Stack
+            - Outputs.LoadBalancerLink
+  CreateDefaultAdminTrigger:
+    Type: Custom::CreateDefaultAdmin
+    DependsOn:
+    - JwtAuthorizerSecret
+    Properties:
+      ServiceTimeout: 70
+      ServiceToken:
+        Fn::GetAtt:
+        - CreateDefaultAdminLambda
+        - Arn
+      AdminEmail:
+        Ref: DefaultAdminEmail
+      AdminPassword:
+        Ref: DefaultAdminPassword
+Outputs:
+  PlatformVersion:
+    Description: The version of the platform
+    Value:
+      Fn::FindInMap:
+      - StaticValues
+      - F2core
+      - Version
+  F2ApiUrl:
+    Description: API Gateway Invoke URL
+    Value:
+      Fn::Sub: 
+        https://${CoreApi}.execute-api.${AWS::Region}.amazonaws.com/${ApiGatewayStage}
+  F2PortalBucketName:
+    Condition: ShouldDeployWebUiStack
+    Description: F2 Portal bucket name for CloudFront
+    Value:
+      Fn::Sub:
+      - ${CoreBucket}/${PortalFolder}
+      - PortalFolder:
+          Fn::FindInMap:
+          - StaticValues
+          - F2core
+          - PortalFolder
+  F2PortalUrl:
+    Condition: ShouldDeployWebUiStack
+    Description: Portal CloudFront URL
+    Value:
+      Fn::Sub:
+      - https://${DomainName}
+      - DomainName:
+          Fn::GetAtt:
+          - WebUIStack
+          - Outputs.CloudFrontPortalDomain
+  F2PortalDistributionId:
+    Condition: ShouldDeployWebUiStack
+    Description: Portal CloudFront Distribution Id
+    Value:
+      Fn::GetAtt:
+      - WebUIStack
+      - Outputs.DistributionF2PortalId

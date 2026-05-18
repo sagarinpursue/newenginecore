@@ -1,0 +1,13 @@
+model ChatSessionFeedback {
+  chatSessionFeedbackId String @id @default(uuid(4)) @db.Uuid
+
+  feedbackText String
+
+  chatSessionId String      @unique @db.Uuid
+  chatSession   ChatSession @relation(fields: [chatSessionId], references: [sessionId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_session_feedbacks")
+}

@@ -1,0 +1,21 @@
+{
+    "type": "object",
+    "required": ["llmStructureId"],
+    "properties": {
+        "llmStructureId": {
+            "type": "string"
+        },
+        "prompt": {
+            "type": "string"
+        },
+        "eventTopic": {
+            "type": "string"
+        },
+        "sessionId": {
+            "type": "string"
+        },
+        "auth": {
+            "type": "object"
+        }
+    }
+}

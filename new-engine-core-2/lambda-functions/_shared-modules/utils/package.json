@@ -1,0 +1,12 @@
+{
+  "name": "@shared-modules/f2-utils",
+  "version": "1.0.0",
+  "description": "Utils module in F2 platform",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}

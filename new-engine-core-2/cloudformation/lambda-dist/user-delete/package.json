@@ -1,0 +1,19 @@
+{
+    "name": "user-delete",
+    "version": "1.0.0",
+    "main": "index.js",
+    "type": "module",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "lint": "eslint --fix .",
+        "deploy": "node ../deploy.js",
+        "local-run": "LOCAL_RUN_EVENT=base node ../local-run.js"
+    },
+    "license": "ISC",
+    "author": "Maksim Kropanov <mkropanov@confidenceway.com>",
+    "dependencies": {
+        "@shared-modules/f2-db-api": "file:../_shared-modules/db-api",
+        "@shared-modules/f2-middlewares": "file:../_shared-modules/middlewares",
+        "@shared-modules/f2-utils": "file:../_shared-modules/utils"
+    }
+}

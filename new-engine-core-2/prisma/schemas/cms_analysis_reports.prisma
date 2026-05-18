@@ -1,0 +1,22 @@
+model CmsAnalysisReport {
+  reportId String @id @default(uuid(4)) @db.Uuid
+
+  status CmsAnalysisReportStatusType
+
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @default(now()) @db.Timestamptz(3)
+  completedAt DateTime? @db.Timestamptz(3)
+
+  cmsAnalysisIssue    CmsAnalysisIssue[]
+  cmsDocumentQuestion CmsDocumentQuestion[]
+
+  @@map("cms_analysis_reports")
+}
+
+enum CmsAnalysisReportStatusType {
+  PROCESSING @map("processing")
+  COMPLETED  @map("completed")
+  FAILED     @map("failed")
+
+  @@map("cms_analysis_report_status_type")
+}

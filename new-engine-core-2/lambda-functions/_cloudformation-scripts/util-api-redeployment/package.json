@@ -1,0 +1,18 @@
+{
+  "name": "util-api-redeployment",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint --fix .",
+    "deploy": "node ../deploy.js",
+    "local-run": "NODE_OPTIONS=--preserve-symlinks LOCAL_RUN_EVENT=base node ../local-run.js"
+  },
+  "author": "ConfidencEway",
+  "license": "ISC",
+  "description": "Redeploy api stage during aws cloudformation running",
+  "dependencies": {
+        "@shared-modules/f2-middlewares": "file:../../_shared-modules/middlewares"
+  }
+}

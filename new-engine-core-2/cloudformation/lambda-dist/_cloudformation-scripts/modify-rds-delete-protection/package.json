@@ -1,0 +1,18 @@
+{
+    "name": "f2-initial-scripts-prepare-ec2-config",
+    "version": "1.0.0",
+    "description": "Prepare EC2 config",
+    "main": "index.js",
+    "type": "module",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "lint": "eslint --fix .",
+        "deploy": "node ../deploy.js",
+        "start": "AWS_REGION='us-east-1' AWS_PROFILE='f2-dev' node test.js"
+    },
+    "author": "Artem Strogalev <astrogalev@confidenceway.com>",
+    "license": "ISC",
+    "dependencies": {
+        "@shared-modules/f2-middlewares": "file:../../_shared-modules/middlewares"
+    }
+}

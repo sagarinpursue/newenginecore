@@ -1,0 +1,18 @@
+{
+  "name": "cx-chat-default-lambda-function-handler",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint --fix .",
+    "deploy": "node ../deploy.js",
+    "local-run": "LOCAL_RUN_EVENT=base node ../local-run.js"
+  },
+  "author": "ConfidencEway",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@shared-modules/f2-middlewares": "file:../_shared-modules/middlewares"
+  }
+}

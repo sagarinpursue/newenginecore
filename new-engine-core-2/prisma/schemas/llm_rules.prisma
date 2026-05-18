@@ -1,0 +1,18 @@
+model LlmRule {
+  llmRuleId String @id @default(uuid(4)) @db.Uuid
+
+  name  String @db.VarChar()
+  value String @db.VarChar()
+
+  llmRulesetId String      @db.Uuid
+  llmRuleset   LlmRuleset  @relation(fields: [llmRulesetId], references: [llmRulesetId])
+  userId       String      @db.Uuid
+  user         UserProfile @relation(fields: [userId], references: [userId])
+  accountId    String      @db.Uuid
+  account      Account     @relation(fields: [accountId], references: [accountId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("llm_rules")
+}

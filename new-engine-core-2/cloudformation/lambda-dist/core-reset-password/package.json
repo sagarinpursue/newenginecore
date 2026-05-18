@@ -1,0 +1,17 @@
+{
+    "name": "f2-core-reset-password",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "type": "module",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "lint": "eslint --fix .",
+        "deploy": "node ../deploy.js"
+    },
+    "author": "Igor Morozov <imorozov@confidenceway.com>",
+    "license": "ISC",
+    "dependencies": {
+        "@shared-modules/f2-middlewares": "file:../_shared-modules/middlewares"
+    }
+}

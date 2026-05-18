@@ -1,0 +1,23 @@
+model CmsAnalysisIssue {
+  issueId  String  @id @default(uuid(4)) @db.Uuid
+  question String
+  summary  String?
+
+  issueType CmsAnalysisIssueType
+
+  reportId String            @db.Uuid
+  report   CmsAnalysisReport @relation(fields: [reportId], references: [reportId])
+
+  cmsIssueChunk CmsIssueChunk[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("cms_analysis_issues")
+}
+
+enum CmsAnalysisIssueType {
+  CONFLICT  @map("conflict")
+  DUPLICATE @map("duplicate")
+
+  @@map("cms_analysis_issue_type")
+}

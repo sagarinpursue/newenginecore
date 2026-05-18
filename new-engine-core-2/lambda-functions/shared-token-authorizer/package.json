@@ -1,0 +1,17 @@
+{
+    "name": "shared-token-authorizer",
+    "version": "1.0.0",
+    "description": "Shared token authorizer",
+    "main": "index.js",
+    "type": "module",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "lint": "eslint --fix .",
+        "deploy": "node ../deploy.js",
+        "local-run": "LOCAL_RUN_EVENT=base node ../local-run.js"
+    },
+    "author": "Vadim Emelin <vemelin@confidenceway.com>",
+    "license": "ISC",
+    "dependencies": {
+    }
+}

@@ -1,0 +1,29 @@
+{
+    "type": "object",
+    "properties": {
+        "sessionId": { "type": "string" },
+        "channelId": { "type": "string" },
+        "input": { "type": "string" },
+        "config": {
+            "type": "object",
+            "properties": {
+                "chatId": { "type": ["string", "null"] },
+                "chatInstanceId": { "type": ["string", "null"] },
+                "handlerType": { "type": ["string", "null"] },
+                "lambdaFunctionName": { "type": ["string", "null"] },
+                "chatProvider": { "type": ["string", "null"] },
+                "accountId": { "type": ["string", "null"] },
+
+                "aiAgentId": { "type": ["string", "null"] },
+                "aiAgentAliasId": { "type": ["string", "null"] },
+
+                "botId": { "type": ["string", "null"] },
+                "botAliasId": { "type": ["string", "null"] },
+                "botLlmStructureId": { "type": ["string", "null"] },
+                "botKnowledgeBaseId": { "type": ["string", "null"] }
+            }
+        }
+    },
+    "required": ["sessionId", "channelId", "input", "config"],
+    "additionalProperties": false
+}

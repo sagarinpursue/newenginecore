@@ -1,0 +1,303 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Temp dashboard template
+
+Parameters:
+  Environment:
+    Type: String
+  CoreVPC:
+    Type: String
+  PrivateSubnetA:
+    Type: String
+  PrivateSubnetB:
+    Type: String
+  PrivateSubnetC:
+    Type: String
+  DefaultSecurityGroup:
+    Type: String
+  LoadBalancerLink:
+    Type: String
+  CoreApi:
+    Type: String
+  CoreApiRootResourceId:
+    Type: String
+  AccountListResourceId:
+    Type: String
+  ProxyLambdaName:
+    Type: String
+    Default: test
+
+Resources:
+  # =================================================================
+  # 1. Api Gateway Resources
+  # =================================================================
+  EntityResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CoreApiRootResourceId
+      PathPart: 'entity'
+
+  EntityListResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref EntityResource
+      PathPart: 'list'
+
+  EntityListStatisticsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref EntityListResource
+      PathPart: 'statistics'
+
+  ServiceResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CoreApiRootResourceId
+      PathPart: 'service'
+
+  ServiceListResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref ServiceResource
+      PathPart: 'list'
+
+  ServiceListStatisticsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref ServiceListResource
+      PathPart: 'statistics'
+
+  OrderResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CoreApiRootResourceId
+      PathPart: 'order'
+
+  OrderListResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref OrderResource
+      PathPart: 'list'
+
+  OrderListStatisticsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref OrderListResource
+      PathPart: 'statistics'
+
+  WithoutReportResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref AccountListResourceId
+      PathPart: 'without-report'
+
+  ReportResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CoreApiRootResourceId
+      PathPart: 'report'
+
+  ReportListResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref ReportResource
+      PathPart: 'list'
+
+  SendResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref CoreApiRootResourceId
+      PathPart: 'send'
+
+  SendNotificationResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref SendResource
+      PathPart: 'notification'
+
+  # =================================================================
+  # 2. Api Gateway Methods
+  # =================================================================
+
+  # Lambda Reminder upload report with Scheduler  ------------>
+  kpiCronReminderUploadReportLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'f2-kpi-cron-reminder-upload-report-${Environment}'
+      Runtime: nodejs22.x
+      Handler: index.handler
+      CodeUri: ../../../lambda-functions/kpi-cron-reminder-upload-report
+      Timeout: 30
+      MemorySize: 512
+      Environment:
+        Variables:
+          FROM_TO: fromTo
+          DB_API_URL: !Ref LoadBalancerLink
+          DB_API_KEY: dbApiKey
+          ENV: !Ref Environment
+          APP_NAME: iga-kpi
+          ACCOUNT_ID: !Ref AWS::AccountId
+      VpcConfig:
+        SubnetIds:
+          - !Ref PrivateSubnetA
+          - !Ref PrivateSubnetB
+          - !Ref PrivateSubnetC
+        SecurityGroupIds:
+          - !Ref DefaultSecurityGroup
+#      Policies:
+#        - AWSLambdaBasicExecutionRole
+#        - AWSLambdaVPCAccessExecutionRole
+#        - AWSXrayWriteOnlyAccess
+#        - Version: "2012-10-17"
+#          Statement:
+#            - Effect: Allow
+#              Action: ses:SendEmail
+#              Resource: "*"
+#      Events:
+#        KpiCronReminderUpload25DayReportScheduler:
+#          Type: ScheduleV2
+#          Properties:
+#            ScheduleExpression: "cron(0 0 25 * ? *)"
+#            Name: KPI-Cron-Reminder-Upload-25-Day-Report
+#            State: ENABLED
+#            RoleArn: !GetAtt KpiCronReminderUploadReportSchedulerRole.Arn
+#        KpiCronReminderUploadLastDayReportScheduler:
+#          Type: ScheduleV2
+#          Properties:
+#            ScheduleExpression: "cron(0 0 L * ? *)"
+#            Name: KPI-Cron-Reminder-Upload-Last-Day-Report
+#            State: ENABLED
+#            RoleArn: !GetAtt KpiCronReminderUploadReportSchedulerRole.Arn
+
+  KpiCronReminderUploadReportSchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+    RoleName: !Sub "Scheduler-Role-KPI-Cron-Reminder-Upload-Report-${Environment}"
+    AssumeRolePolicyDocument:
+      Version: "2012-10-17"
+      Statement:
+        - Effect: Allow
+          Principal:
+          Service: scheduler.amazonaws.com
+          Action: sts:AssumeRole
+    Policies:
+      - PolicyName: !Sub "KPI-Scheduler-Target-Execution-${Environment}"
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource:
+                - !GetAtt kpiCronReminderUploadReportLambda.Arn
+
+  # Lambda Send Email Post /send/notification ------------>
+  kpiSendEmailPostLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'f2-kpi-send-email-post-${Environment}'
+      Runtime: nodejs22.x
+      Role: !GetAtt ....Arn
+      Handler: index.handler
+      Timeout: 30
+      MemorySize: 512
+      VpcConfig:
+        SubnetIds:
+          - !Ref PrivateSubnetA
+          - !Ref PrivateSubnetB
+          - !Ref PrivateSubnetC
+        SecurityGroupIds:
+          - !Ref DefaultSecurityGroup
+#      Policies:
+#        - AWSLambdaBasicExecutionRole
+#        - AWSLambdaVPCAccessExecutionRole
+#        - AWSXrayWriteOnlyAccess
+#        - Version: "2012-10-17"
+#          Statement:
+#            - Effect: Allow
+#              Action: ses:SendEmail
+#              Resource: "*"
+#      Events:
+#        PostTokenAPI: almost done
+#          Type: Api
+#          Properties:
+#            Path: /send/notification
+#            Method: post
+#            RestApiId: !Ref CoreApi
+
+# TODO: api getaway methods
+#  DBProxyLambda:
+#    Type: AWS::Serverless::Function
+#    Properties:
+#      FunctionName: !Ref ProxyLambdaName
+#      Runtime: nodejs22.x
+#      Handler: index.handler
+#      CodeUri: .
+#      Events:
+#        PostEntityListStatisticsAPI: almost done
+#          Type: Api
+#          Properties:
+#            Path: /entity/list/statistics
+#            Method: post
+#            RestApiId: !Ref CoreApi
+#        GetServiceListAPI: almost done
+#          Type: Api
+#          Properties:
+#            Path: /service/list
+#            Method: get
+#            RestApiId: !Ref CoreApi
+#        PostServiceListStatisticsAPI: almost done
+#          Type: Api
+#          Properties:
+#            Path: /service/list/statistics
+#            Method: post
+#            RestApiId: !Ref CoreApi
+#        PostOrderListStatisticsAPI: almost done
+#          Type: Api
+#          Properties:
+#            Path: /order/list/statistics
+#            Method: post
+#            RestApiId: !Ref CoreApi
+#        PostOrderAPI: almost done
+#          Type: Api
+#          Properties:
+#            Path: /order
+#            Method: post
+#            RestApiId: !Ref CoreApi
+#        GetAccountListWithoutReportAPI: almost done
+#          Type: Api
+#          Properties:
+#            Path: /account/list/without-report
+#            Method: get
+#            RestApiId: !Ref CoreApi
+#        GetReportListAPI: almost done
+#          Type: Api
+#          Properties:
+#            Path: /report/list
+#            Method: get
+#            RestApiId: !Ref CoreApi
+#        PostReportAPI: almost done
+#          Type: Api
+#          Properties:
+#            Path: /report
+#            Method: post
+#            RestApiId: !Ref CoreApi
+#        PostSendNotificationAPI: almost done
+#          Type: Api
+#          Properties:
+#            Path: /send/notification
+#            Method: post
+#            RestApiId: !Ref CoreApi

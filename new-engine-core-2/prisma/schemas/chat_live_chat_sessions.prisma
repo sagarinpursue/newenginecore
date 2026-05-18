@@ -1,0 +1,21 @@
+model ChatLiveChatSession {
+  chatId              String   @id
+  email               String?
+  fullName            String?
+  phoneNumber         String?
+  isActive            Boolean?
+  entityId            String?  @db.Uuid
+  organisationId      String?  @db.Uuid
+  customerAccessToken String?
+
+  sessionId String?      @unique @db.Uuid
+  session   ChatSession? @relation(fields: [sessionId], references: [sessionId])
+
+  chatLiveChatThread ChatLiveChatThread[]
+
+  expiresAt DateTime? @default(now()) @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime? @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_live_chat_sessions")
+}

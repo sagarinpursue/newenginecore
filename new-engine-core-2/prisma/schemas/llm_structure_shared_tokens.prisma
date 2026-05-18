@@ -1,0 +1,14 @@
+model LlmStructureSharedToken {
+  llmStructureSharedTokenId String @id @default(uuid(4)) @db.Uuid
+
+  description String? @db.VarChar()
+  sharedToken String  @unique @default(uuid(4)) @db.VarChar()
+
+  llmStructureId String       @db.Uuid
+  llmStructure   LlmStructure @relation(fields: [llmStructureId], references: [llmStructureId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("llm_structure_shared_tokens")
+}

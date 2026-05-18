@@ -1,0 +1,12 @@
+{
+  "name": "@shared-modules/f2-db-api",
+  "version": "1.0.0",
+  "description": "Module to access for f2 DB using API.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}

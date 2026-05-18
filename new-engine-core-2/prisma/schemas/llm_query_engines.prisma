@@ -1,0 +1,24 @@
+model LlmQueryEngine {
+  llmQueryEngineId String @id @default(uuid(4)) @db.Uuid
+
+  name              String  @db.VarChar()
+  embeddingDriver   String? @db.VarChar()
+  namespace         String  @db.VarChar()
+  vectorStoreDriver String  @db.VarChar()
+  topN              Int     @db.SmallInt
+
+  useRagApi       Boolean @default(false)
+  useHybridSearch Boolean @default(false)
+
+  llmTaskId String      @db.Uuid
+  llmTask   LlmTask     @relation(fields: [llmTaskId], references: [llmTaskId])
+  userId    String      @db.Uuid
+  user      UserProfile @relation(fields: [userId], references: [userId])
+  accountId String      @db.Uuid
+  account   Account     @relation(fields: [accountId], references: [accountId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("llm_query_engines")
+}

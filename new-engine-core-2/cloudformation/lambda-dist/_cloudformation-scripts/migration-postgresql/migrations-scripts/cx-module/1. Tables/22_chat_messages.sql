@@ -1,0 +1,2 @@
+ALTER TABLE public.chat_messages
+    ADD COLUMN IF NOT EXISTS sources TEXT[] NULL;

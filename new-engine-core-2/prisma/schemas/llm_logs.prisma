@@ -1,0 +1,16 @@
+model LlmLog {
+  llmLogId String @id @default(uuid(4)) @db.Uuid
+
+  sessionId String   @db.Uuid
+  question  String
+  answer    String
+  sources   String[]
+
+  llmStructureId String       @db.Uuid
+  llmStructure   LlmStructure @relation(fields: [llmStructureId], references: [llmStructureId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("llm_logs")
+}

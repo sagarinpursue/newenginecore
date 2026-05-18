@@ -1,0 +1,451 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: VPC Configuration
+
+Parameters:
+  Version:
+    Type: String
+    Default: '1.0.0'
+  Environment:
+    Type: String
+    AllowedValues:
+      - dev
+      - prod
+      - stage
+  CustomerVpc:
+    Type: String
+
+Mappings:
+  EnvironmentMap:
+    dev:
+      VpcName: 'f2-core-vpc-dev'
+    prod:
+      VpcName: 'f2-core-vpc-prod'
+    stage:
+      VpcName: 'f2-core-vpc-stage'
+
+Conditions:
+  CreateVpc: !Equals [!Ref CustomerVpc, ""]
+
+Resources:
+  # =================================================================
+  # 1. VPC
+  # =================================================================
+  CoreVpc:
+    Type: AWS::EC2::VPC
+    Condition: CreateVpc
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      Tags:
+        - Key: Name
+          Value: !Sub 'f2-core-vpc-${Environment}'
+
+  # =================================================================
+  # 2. VPC Cidr Blocks
+  # =================================================================
+  Ipv6CidrBlock:
+    Type: AWS::EC2::VPCCidrBlock
+    Condition: CreateVpc
+    Properties:
+      VpcId: !Ref CoreVpc
+      AmazonProvidedIpv6CidrBlock: 'true'
+
+  # =================================================================
+  # 3. VPC Route Tables
+  # =================================================================
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Condition: CreateVpc
+    Properties:
+      VpcId: !Ref CoreVpc
+      Tags:
+        - Key: Name
+          Value: !Sub 'f2-public-route-table-${Environment}'
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Condition: CreateVpc
+    Properties:
+      VpcId: !Ref CoreVpc
+      Tags:
+        - Key: Name
+          Value: !Sub 'f2-private-route-table-${Environment}'
+
+  # =================================================================
+  # 4. VPC Internet Gateway
+  # =================================================================
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Condition: CreateVpc
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub 'f2-internet-gateway-${Environment}'
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Condition: CreateVpc
+    Properties:
+      VpcId: !Ref CoreVpc
+      InternetGatewayId: !Ref InternetGateway
+
+  InternetRoute:
+    Type: AWS::EC2::Route
+    Condition: CreateVpc
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  # =================================================================
+  # 5. VPC Public Subnets
+  # =================================================================
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Condition: CreateVpc
+    Properties:
+      VpcId: !Ref CoreVpc
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: 'true'
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub 'f2-public-subnet-a-${Environment}'
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Condition: CreateVpc
+    Properties:
+      VpcId: !Ref CoreVpc
+      CidrBlock: 10.0.2.0/24
+      MapPublicIpOnLaunch: 'true'
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub 'f2-public-subnet-b-${Environment}'
+
+  PublicSubnetC:
+    Type: AWS::EC2::Subnet
+    Condition: CreateVpc
+    Properties:
+      VpcId: !Ref CoreVpc
+      CidrBlock: 10.0.3.0/24
+      MapPublicIpOnLaunch: 'true'
+      AvailabilityZone: !Select [2, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub 'f2-public-subnet-c-${Environment}'
+
+  # =================================================================
+  # 6. VPC Public RT Association
+  # =================================================================
+  PublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVpc
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVpc
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetCRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVpc
+    Properties:
+      SubnetId: !Ref PublicSubnetC
+      RouteTableId: !Ref PublicRouteTable
+
+  # =================================================================
+  # 7. VPC Private Subnets
+  # =================================================================
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Condition: CreateVpc
+    Properties:
+      VpcId: !Ref CoreVpc
+      CidrBlock: 10.0.101.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub 'f2-private-subnet-a-${Environment}'
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Condition: CreateVpc
+    Properties:
+      VpcId: !Ref CoreVpc
+      CidrBlock: 10.0.102.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub 'f2-private-subnet-b-${Environment}'
+
+  PrivateSubnetC:
+    Type: AWS::EC2::Subnet
+    Condition: CreateVpc
+    Properties:
+      VpcId: !Ref CoreVpc
+      CidrBlock: 10.0.103.0/24
+      AvailabilityZone: !Select [2, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub 'f2-private-subnet-c-${Environment}'
+
+  # =================================================================
+  # 8. VPC Private RT Association
+  # =================================================================
+  PrivateSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVpc
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVpc
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnetCRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVpc
+    Properties:
+      SubnetId: !Ref PrivateSubnetC
+      RouteTableId: !Ref PrivateRouteTable
+
+  # =================================================================
+  # 9. VPC Security Groups
+  # =================================================================
+  
+  APIServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Security group that allows traffic from ALB"
+      VpcId: !If 
+          - CreateVpc
+          - !Ref CoreVpc
+          - !Ref CustomerVpc
+      GroupName: !Sub 'f2-core-api-service-${Environment}'
+      Tags:
+        - Key: Name
+          Value: !Sub 'sg-api-service-${Environment}'
+        - Key: App
+          Value: F2
+  
+  AllowAccessToEC2FromAlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref APIServiceSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8000
+      ToPort: 8000
+      SourceSecurityGroupId: !Ref AlbSecurityGroup
+
+  RdsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Security group that allows traffic from DB"
+      VpcId: !If 
+          - CreateVpc
+          - !Ref CoreVpc
+          - !Ref CustomerVpc
+      GroupName: !Sub 'f2-core-db-${Environment}'
+      Tags:
+        - Key: Name
+          Value: !Sub 'sg-db-${Environment}'
+        - Key: App
+          Value: F2
+
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Security group that allows traffic to ALB"
+      VpcId: !If 
+          - CreateVpc
+          - !Ref CoreVpc
+          - !Ref CustomerVpc
+      GroupName: !Sub 'f2-core-alb-${Environment}'
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        SourceSecurityGroupId: !Ref CoreAppSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub 'sg-alb-${Environment}'
+        - Key: App
+          Value: F2
+
+  CoreAppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Security group that allows traffic to Lambda"
+      VpcId: !If 
+          - CreateVpc
+          - !Ref CoreVpc
+          - !Ref CustomerVpc
+      GroupName: !Sub 'f2-core-app-${Environment}'
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 443
+        ToPort: 443
+        SourceSecurityGroupId: !Ref APIServiceSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub 'sg-core-app-${Environment}'
+        - Key: App
+          Value: F2
+  
+  CoreAppIngressFromSelf:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref CoreAppSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !Ref CoreAppSecurityGroup
+
+  # =================================================================
+  # 10. VPC Endpoints
+  # =================================================================
+  # TODO: Need to resolve true way for use NAT or Endpoints
+  # SecretsManagerVPCEndpoint:
+  #   Type: AWS::EC2::VPCEndpoint
+  #   Properties:
+  #     ServiceName: !Sub 'com.amazonaws.${AWS::Region}.secretsmanager'
+  #     VpcId: !Ref CoreVpc
+  #     VpcEndpointType: Interface
+  #     SubnetIds:
+  #       - !Ref PrivateSubnetA
+  #       - !Ref PrivateSubnetB
+  #       - !Ref PrivateSubnetC
+  #     SecurityGroupIds:
+  #       - !Ref CoreAppSecurityGroup
+  #     PrivateDnsEnabled: true
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub 'f2-${AWS::StackName}-SecretsManagerEndpoint'
+
+  # LambdaVPCEndpoint:
+  #   Type: AWS::EC2::VPCEndpoint
+  #   Properties:
+  #     ServiceName: !Sub 'com.amazonaws.${AWS::Region}.lambda'
+  #     VpcId: !Ref CoreVpc
+  #     VpcEndpointType: Interface
+  #     SubnetIds:
+  #       - !Ref PrivateSubnetA
+  #       - !Ref PrivateSubnetB
+  #       - !Ref PrivateSubnetC
+  #     SecurityGroupIds:
+  #       - !Ref CoreAppSecurityGroup
+  #     PrivateDnsEnabled: true
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub 'f2-${AWS::StackName}-LambdaEndpoint'
+
+  # BedrockVpcEndpoint:
+  #   Type: AWS::EC2::VPCEndpoint
+  #   Properties:
+  #     ServiceName: !Sub 'com.amazonaws.${AWS::Region}.bedrock-agent'
+  #     VpcId: !Ref CoreVpc
+  #     VpcEndpointType: Interface
+  #     SubnetIds:
+  #       - !Ref PrivateSubnetA
+  #       - !Ref PrivateSubnetB
+  #       - !Ref PrivateSubnetC
+  #     SecurityGroupIds:
+  #       - !Ref CoreAppSecurityGroup
+  #     PrivateDnsEnabled: true
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub 'f2-${AWS::StackName}-bedrock-agent-Endpoint'
+
+  S3GatewayEndpoint:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Condition: CreateVpc
+    Properties:
+      VpcId: !Ref CoreVpc
+      VpcEndpointType: 'Gateway'
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal: '*'
+            Action: '*'
+            Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub 'f2-${AWS::StackName}-S3Endpoint'
+
+  # =================================================================
+  # 11. VPC NAT Gateways
+  # =================================================================
+  NatGatewayEipA:
+    Type: AWS::EC2::EIP
+    Condition: CreateVpc
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-NatGatewayEipA-${Environment}"
+
+  NatGatewayA:
+    Type: AWS::EC2::NatGateway
+    Condition: CreateVpc
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      AllocationId: !GetAtt NatGatewayEipA.AllocationId
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-NAT-Gateway-A-${Environment}"
+
+  PrivateRouteToNatGatewayA:
+    Type: AWS::EC2::Route
+    Condition: CreateVpc
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayA
+
+  # =================================================================
+  # Outputs
+  # =================================================================
+Outputs:
+  VPC:
+    Description: 'VPC'
+    Value: !If
+      - CreateVpc
+      - !Ref CoreVpc
+      - !Ref CustomerVpc
+  
+  PrivateSubnetIds:
+    Value: !If
+      - CreateVpc
+      - !Join [',', [ !Ref PrivateSubnetA, !Ref PrivateSubnetB, !Ref PrivateSubnetC ]]
+      - "" # TODO
+  PublicSubnetIds:
+    Value: !If
+      - CreateVpc
+      - !Join [',', [ !Ref PublicSubnetA, !Ref PublicSubnetB, !Ref PublicSubnetC ]]
+      - "" # TODO
+
+  CoreAppSecurityGroup:
+    Value: !Ref CoreAppSecurityGroup
+  APIServiceSecurityGroup:
+    Value: !Ref APIServiceSecurityGroup
+  AlbSecurityGroup:
+    Value: !Ref AlbSecurityGroup
+  RdsSecurityGroup:
+    Value: !Ref RdsSecurityGroup

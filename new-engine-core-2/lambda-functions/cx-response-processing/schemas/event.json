@@ -1,0 +1,24 @@
+{
+    "type": "object",
+    "properties": {
+        "sessionId": { "type": "string" },
+        "messageText": { "type": "string" },
+        "from": { "type": "string"},
+        "files": {
+            "type": "array",
+            "items": {
+                "type": "object"
+            },
+            "default": []
+        },
+        "sources": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "default": []
+        }
+    },
+    "required": ["sessionId", "messageText", "from"],
+    "additionalProperties": true
+}

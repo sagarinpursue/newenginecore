@@ -1,0 +1,33 @@
+model ChatChannel {
+  channelId String @id @default(uuid(4)) @db.Uuid
+
+  channel        ChatChannelType @default(WEB)
+  name           String?
+  apiKey         String?
+  domainName     String?
+  distributionId String?
+
+  userId    String?      @db.Uuid
+  user      UserProfile? @relation(fields: [userId], references: [userId])
+  accountId String?      @db.Uuid
+  account   Account?     @relation(fields: [accountId], references: [accountId])
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_channels")
+}
+
+enum ChatChannelType {
+  WEB       @map("web")
+  EMAIL     @map("email")
+  WORKPLACE @map("workplace")
+  SLACK     @map("slack")
+  FACEBOOK  @map("facebook")
+  MSTEAMS   @map("msteams")
+  INSTAGRAM @map("instagram")
+  WHATSAPP  @map("whatsapp")
+  TWITTER   @map("twitter")
+
+  @@map("chat_channel_type")
+}

@@ -1,0 +1,427 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Stack to instance API solution.
+
+Parameters:
+  Environment:
+    Type: String
+  PrivateBucketName:
+    Type: String
+
+  VPC:
+    Type: String
+    Description: VPC ID
+  PrivateSubnetIds:
+    Type: CommaDelimitedList
+    Description: List of private subnet IDs
+
+  APIServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+  RdsClusterEndpoint:
+    Type: String
+  RdsClusterPort:
+    Type: String
+  MasterCredentialsSecret:
+    Type: String
+  JwtAuthorizerSecret:
+    Type: String
+  InitialF2CoreFolder:
+    Type: String
+    Default: ec2-config
+  AlbScheme:
+    Type: String
+    Description: "(Optional) Input provided ALB scheme. If left empty"
+    AllowedValues:
+      - internet-facing
+      - internal
+    Default: internal
+  CommonLayer:
+    Type: String
+  LambdaRuntime:
+    Type: String
+    Default: nodejs22.x
+  Version:
+    Type: String
+    Default: '1.0.0'
+  InstanceType:
+    Type: String
+    Default: t3.small
+  KmsKeyId:
+    Type: String
+
+Conditions:
+  HasKmsKey: !Not [!Equals [!Ref KmsKeyId, ""]]
+
+Mappings:
+  ServiceAPI:
+    us-east-1: # Virginia
+      ami: 'ami-08480f431b5d336c0'
+    us-west-2: # Oregon
+      ami: 'ami-07e7643d33a55b29a'
+    eu-west-1: # Ireland
+      ami: 'ami-02d8466c1f4dd2a22'
+
+Resources:
+
+  # =================================================================
+  # IAM Roles
+  # =================================================================
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+        RoleName: !Sub 'f2-core-service-ec2-role-${Environment}'
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: ec2.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+        - PolicyName: Ec2SecretsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: '*'
+        ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+
+  # =================================================================
+  # IAM Instance Profiles
+  # =================================================================
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+        InstanceProfileName: f2-ec2-instance-role-profile
+        Roles:
+        - !Ref InstanceRole
+
+  # =================================================================
+  # EC2 Launch Templates
+  # =================================================================
+  LaunchTemplateEC2:
+    Type: AWS::EC2::LaunchTemplate
+    DependsOn: InitialPrepareEc2EnvironmentTrigger
+    Properties:
+      LaunchTemplateName: !Sub "f2-core-platform-api-lt-${Environment}"
+      LaunchTemplateData:
+        InstanceType: !Ref InstanceType
+        ImageId: !FindInMap ['ServiceAPI', !Ref "AWS::Region", 'ami']
+        IamInstanceProfile:
+          Name: !Ref InstanceProfile
+        BlockDeviceMappings:
+          - DeviceName: /dev/sda1
+            Ebs:
+              VolumeSize: 16
+              VolumeType: gp3
+              Encrypted: !If [HasKmsKey, true, false]
+              KmsKeyId: !If [HasKmsKey, !Ref KmsKeyId, !Ref "AWS::NoValue"]
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            cd /home/ubuntu
+            aws s3 cp "s3://${PrivateBucketName}/${InitialF2CoreFolder}" "${InitialF2CoreFolder}" --recursive
+            cd ${InitialF2CoreFolder}
+
+            echo "✅ Set Environment variables"
+            export POSTGRES_HOST=${RdsClusterEndpoint}
+            export POSTGRES_PORT=${RdsClusterPort}
+            export MASTER_CREDENTIALS_SECRET_ARN=${MasterCredentialsSecret}
+            export DASHBOARD_CREDENTIALS_SECRET_ARN=${AuthAdminDashboardSecret}
+            export JWT_SECRET_ARN=${JwtAuthorizerSecret}
+
+            echo "▶️ Pull and start dockers services"
+            bash init.sh
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: !Sub "f2-core-instance-API-${Environment}"
+              - Key: Project
+                Value: F2-Project
+        NetworkInterfaces:
+          - DeviceIndex: 0
+            SubnetId: !Select [0, !Ref PrivateSubnetIds]
+            Groups:
+              - !Ref APIServiceSecurityGroup
+
+  # =================================================================
+  # LB Target Groups
+  # =================================================================
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+        Name: !Sub "f2-core-platform-API-${Environment}-tg"
+        Protocol: HTTP
+        Port: 8000
+        VpcId: !Ref VPC
+        TargetType: instance
+        HealthCheckProtocol: HTTP
+        HealthCheckPort: "8000"
+        HealthCheckPath: /healthz
+        Matcher:
+          HttpCode: 200
+        Tags:
+        - Key: Name
+          Value: !Sub "f2-core-platform-API-${Environment}-tg"
+
+  # =================================================================
+  # Auto Scaling Groups
+  # =================================================================
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+        AutoScalingGroupName: !Sub "asg-f2-core-platform-API-${Environment}"
+        VPCZoneIdentifier: !Ref PrivateSubnetIds
+        LaunchTemplate:
+            LaunchTemplateId: !Ref LaunchTemplateEC2
+            Version: !GetAtt LaunchTemplateEC2.LatestVersionNumber
+        MinSize: 2
+        MaxSize: 5
+        DesiredCapacity: 2
+        HealthCheckType: ELB
+        HealthCheckGracePeriod: 300
+        TargetGroupARNs:
+        - !Ref TargetGroup
+        Tags:
+        - Key: Name
+          Value: !Sub "asg-f2-core-platform-API-${Environment}"
+          PropagateAtLaunch: true
+
+  # =================================================================
+  # Load Balancers
+  # =================================================================
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+        Name: !Sub "f2-core-platform-alb-${Environment}"
+        Scheme: !Ref AlbScheme
+        Subnets: !Ref PrivateSubnetIds
+        SecurityGroups:
+        - !Ref AlbSecurityGroup
+        Type: application
+        IpAddressType: ipv4
+        Tags:
+        - Key: Name
+          Value: !Sub "f2-core-platform-alb-${Environment}"
+
+  # =================================================================
+  # Load Balancer Listeners
+  # =================================================================
+  AlbListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+        DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+        LoadBalancerArn: !Ref ApplicationLoadBalancer
+        Port: 80
+        Protocol: HTTP
+
+  # =================================================================
+  # ADMIN DASHBOARD CREDENTIALS
+  # =================================================================
+  AuthAdminDashboardSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub 'f2-${Environment}/dashboard/auth'
+      GenerateSecretString:
+        GenerateStringKey: password
+        ExcludePunctuation: true
+        PasswordLength: 20
+        SecretStringTemplate: "{\"username\":\"admin_dashboard\"}"
+
+  # =================================================================
+  # ADMIN DASHBOARD VPC DISTRIBUTION
+  # =================================================================
+
+  CreateVPCOriginDashboardLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-clf-create-dashboard-vpc-origin-script-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: LambdaSecretsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - cloudfront:CreateVpcOrigin
+                  - cloudfront:DeleteVpcOrigin
+                  - cloudfront:UpdateVpcOrigin
+                  - cloudfront:GetVpcOrigin
+                  - cloudfront:ListVpcOrigins
+                  - cloudfront:TagResource
+                  - ec2:DescribeInternetGateways
+                  - ec2:DescribeSecurityGroups
+                  - elasticloadbalancing:DescribeLoadBalancers
+                  - elasticloadbalancing:DescribeListeners
+                Resource: '*'
+                # TODO: These policy was added from https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create-service-linked-role.html#service-linked-role-permissions
+              - Effect: Allow
+                Action: iam:CreateServiceLinkedRole
+                Resource: arn:aws:iam::*:role/aws-service-role/vpcorigin.cloudfront.amazonaws.com/AWSServiceRoleForCloudFrontVPCOrigin
+              - Effect: Allow
+                Action: 
+                  - iam:AttachRolePolicy
+                  - iam:PutRolePolicy
+                Resource: arn:aws:iam::*:role/aws-service-role/vpcorigin.cloudfront.amazonaws.com/AWSServiceRoleForCloudFrontVPCOrigin
+  
+  CreateVPCOriginDashboardLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'f2-clf-create-dashboard-vpc-origin-script-${Environment}'
+      Handler: index.handler
+      Role: !GetAtt CreateVPCOriginDashboardLambdaExecutionRole.Arn
+      Runtime: !Ref LambdaRuntime
+      Layers:
+        - !Ref CommonLayer
+      Timeout: 900
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+      Code: ../../lambda-dist/_cloudformation-scripts/create-dashboard-vpc-origin # ! <--- Locale path to 'aws cloudformation package'
+
+  CreateVPCOriginDashboardTrigger:
+    Type: Custom::CreateVPCOriginDashboard
+    Properties:
+      ServiceTimeout: 900
+      ServiceToken: !GetAtt CreateVPCOriginDashboardLambda.Arn
+      OriginName: !Sub 'f2-API-service-dashboard-${Environment}'
+      OriginArn: !GetAtt ApplicationLoadBalancer.LoadBalancerArn
+
+  AlbAccessToVpcOrigin:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref AlbSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      SourceSecurityGroupId: !GetAtt CreateVPCOriginDashboardTrigger.VpcOriginSecurityGroupId
+
+  AdminDashboardResponseHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Comment: !Sub 'F2 Platform Admin Dashboard Response Headers Policy ${Environment}'
+        Name: !Sub 'f2-core-admin-dashboard-response-headers-policy-${Environment}'
+        SecurityHeadersConfig:
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: 31536000
+            IncludeSubdomains: false
+            Preload: false
+            Override: false
+          ContentTypeOptions:
+            Override: true
+          FrameOptions:
+            FrameOption: SAMEORIGIN
+            Override: true
+          ReferrerPolicy:
+            ReferrerPolicy: strict-origin-when-cross-origin
+            Override: true
+          ContentSecurityPolicy:
+            ContentSecurityPolicy: "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; manifest-src 'self'; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests; require-trusted-types-for 'script';"
+            Override: false
+
+  DistributionDashboard:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub "API Service Dashboard ${Environment}"
+        Enabled: true
+        DefaultRootObject: index.html
+        Origins:
+          - Id: ApiServiceDashboard
+            DomainName: !GetAtt ApplicationLoadBalancer.DNSName
+            VpcOriginConfig:
+              VpcOriginId: !GetAtt CreateVPCOriginDashboardTrigger.VpcOriginId
+        DefaultCacheBehavior:
+          TargetOriginId: ApiServiceDashboard
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+          # * CachingDisabled - https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-managed-cache-policies.html#managed-cache-policy-caching-disabled
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          # * AllViewer - https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-managed-origin-request-policies.html#managed-origin-request-policy-all-viewer
+          OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+          ResponseHeadersPolicyId: !GetAtt AdminDashboardResponseHeadersPolicy.Id
+          Compress: true
+        HttpVersion: http2
+
+  # =================================================================
+  # Initial Lambda script to prepare environment for EC2
+  # =================================================================
+  InitialLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'f2-clf-initial-prepare-ec2-environment-script-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: LambdaS3AccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: !Sub "arn:aws:s3:::${PrivateBucketName}/*"
+              - Effect: Allow
+                Action: 
+                  - s3:ListBucket
+                Resource: !Sub "arn:aws:s3:::${PrivateBucketName}"
+  
+  InitialPrepareEc2EnvironmentLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'f2-clf-initial-prepare-ec2-environment-script-${Environment}'
+      Handler: index.handler
+      Role: !GetAtt InitialLambdaExecutionRole.Arn
+      Runtime: !Ref LambdaRuntime
+      Layers:
+        - !Ref CommonLayer
+      Timeout: 60
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          EC2_CONFIG_FOLDER: !Ref InitialF2CoreFolder
+          PRIVATE_BUCKET_NAME: !Ref PrivateBucketName
+          JWT_AUTHORIZER_SECRET: !Ref  JwtAuthorizerSecret
+      Code: ../../lambda-dist/_cloudformation-scripts/prepare-ec2-config # ! <--- Locale path to 'aws cloudformation package'
+
+  InitialPrepareEc2EnvironmentTrigger:
+    Type: Custom::InitialPrepareEc2Environment
+    Properties:
+      ServiceTimeout: 70
+      ServiceToken: !GetAtt InitialPrepareEc2EnvironmentLambda.Arn
+      AuthAdminDashboardSecretArn: !Ref AuthAdminDashboardSecret
+      MasterCredentialsSecretArn: !Ref MasterCredentialsSecret
+      JwtAuthorizerSecretArn: !Ref JwtAuthorizerSecret
+      Version: !Ref Version
+
+  # =================================================================
+  # Outputs
+  # =================================================================
+Outputs:
+  LoadBalancerLink:
+    Description: 'F2 Load Balancer Link'
+    Value: !Sub "http://${ApplicationLoadBalancer.DNSName}"

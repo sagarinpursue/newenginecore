@@ -1,0 +1,48 @@
+{
+  "name": "f2-common-layer",
+  "version": "1.0.0",
+  "description": "External dependencies libs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "symlink": "ln -s node_modules ../../node_modules"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@middy/cloudformation-response": "^6.4.3",
+    "@middy/cloudformation-router": "^6.4.4",
+    "@middy/core": "^6.1.6",
+    "@middy/http-json-body-parser": "^6.4.4",
+    "@middy/input-output-logger": "^6.4.4",
+    "@middy/secrets-manager": "^6.1.6",
+    "@middy/validator": "^6.4.4",
+    "@supabase/supabase-js": "^2.76.1",
+    "ajv": "^8.17.1",
+    "ajv-errors": "^3.0.0",
+    "ajv-formats": "^3.0.1",
+    "axios": "^1.11.0",
+    "dayjs": "^1.11.15",
+    "http-errors": "^2.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-api-gateway": "^3.848.0",
+    "@aws-sdk/client-bedrock": "^3.952.0",
+    "@aws-sdk/client-bedrock-agent": "^3.943.0",
+    "@aws-sdk/client-bedrock-agent-runtime": "^3.916.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.954.0",
+    "@aws-sdk/client-cloudfront": "^3.858.0",
+    "@aws-sdk/client-cloudwatch-logs": "^3.939.0",
+    "@aws-sdk/client-ec2": "^3.891.0",
+    "@aws-sdk/client-lex-models-v2": "^3.914.0",
+    "@aws-sdk/client-opensearchserverless": "^3.726.1",
+    "@aws-sdk/client-rds": "^3.939.0",
+    "@aws-sdk/client-s3": "^3.734.0",
+    "@aws-sdk/client-s3vectors": "^3.943.0",
+    "@aws-sdk/client-secrets-manager": "^3.741.0",
+    "@aws-sdk/client-sts": "^3.1021.0",
+    "@aws-sdk/client-sqs": "^3.939.0"
+  }
+}

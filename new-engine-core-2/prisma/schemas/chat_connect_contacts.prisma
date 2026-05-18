@@ -1,0 +1,12 @@
+model ChatConnectContact {
+  contactId   String  @id @default(uuid(4)) @db.Uuid
+  email       String?
+  fullName    String?
+  localeId    String?
+  phoneNumber String?
+
+  sessionId String?      @db.Uuid
+  session   ChatSession? @relation(fields: [sessionId], references: [sessionId])
+
+  @@map("chat_connect_contacts")
+}

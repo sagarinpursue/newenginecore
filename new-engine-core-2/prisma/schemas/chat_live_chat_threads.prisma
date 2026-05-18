@@ -1,0 +1,14 @@
+model ChatLiveChatThread {
+  threadId String @id
+
+  chatId          String?
+  liveChatSession ChatLiveChatSession? @relation(fields: [chatId], references: [chatId])
+
+  sessionId String?      @db.Uuid
+  session   ChatSession? @relation(fields: [sessionId], references: [sessionId])
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime? @default(now()) @db.Timestamptz(3)
+
+  @@map("chat_live_chat_threads")
+}
