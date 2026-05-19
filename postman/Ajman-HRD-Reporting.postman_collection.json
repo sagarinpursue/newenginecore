@@ -1,0 +1,354 @@
+{
+  "info": {
+    "_postman_id": "a8f3c2e1-7b4d-4a9e-9f1c-ajman-hrd-reporting",
+    "name": "Ajman HRD Reporting APIs",
+    "description": "APIs used by the addons-ajman-hrd reporting UI.\n\n**Auth:** All endpoints require `Authorization: Bearer {{authToken}}` (JWT from platform login).\n\n**Filters:** Use `channel_filter` / `account_filter` = `all`, or a UUID. Dates are ISO-8601 UTC.\n\n**Deploy:** Run cx-module migrations (functions 23, 31–42) before testing search RPCs.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://e7lqnapugc.execute-api.us-west-2.amazonaws.com/f2-api",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "channel_filter",
+      "value": "all",
+      "type": "string"
+    },
+    {
+      "key": "account_filter",
+      "value": "all",
+      "type": "string"
+    },
+    {
+      "key": "p_start_date",
+      "value": "2026-01-01T00:00:00.000Z",
+      "type": "string"
+    },
+    {
+      "key": "p_end_date",
+      "value": "2026-05-18T23:59:59.999Z",
+      "type": "string"
+    },
+    {
+      "key": "p_timezone",
+      "value": "Asia/Dubai",
+      "type": "string"
+    },
+    {
+      "key": "page",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "pageSize",
+      "value": "20",
+      "type": "string"
+    },
+    {
+      "key": "searchString",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "aiAgentId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{authToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Dashboard",
+      "description": "Proxied via `db-api-invoker` → PostgREST RPC. Returns aggregated metrics for the selected period.",
+      "item": [
+        {
+          "name": "Get dashboard metrics (daily series)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/cx/dashboard/metrics?channel_filter={{channel_filter}}&account_filter={{account_filter}}&p_start_date={{p_start_date}}&p_end_date={{p_end_date}}&p_timezone={{p_timezone}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["cx", "dashboard", "metrics"],
+              "query": [
+                {
+                  "key": "channel_filter",
+                  "value": "{{channel_filter}}",
+                  "description": "Channel UUID or `all`"
+                },
+                {
+                  "key": "account_filter",
+                  "value": "{{account_filter}}",
+                  "description": "Account UUID or `all`"
+                },
+                {
+                  "key": "p_start_date",
+                  "value": "{{p_start_date}}",
+                  "description": "Period start (ISO-8601)"
+                },
+                {
+                  "key": "p_end_date",
+                  "value": "{{p_end_date}}",
+                  "description": "Period end (ISO-8601)"
+                },
+                {
+                  "key": "p_timezone",
+                  "value": "{{p_timezone}}",
+                  "description": "IANA timezone, e.g. Asia/Dubai"
+                }
+              ]
+            },
+            "description": "RPC: `cx_dashboard_metrics_group_get`\n\n**Used by:** Reporting monitoring (sessions trend), Total Sessions chart, QoE/answers aggregates.\n\n**Response:** Array of daily rows with `day`, `total_session_count`, `message_session_count`, rating counts, `analysis_other_count`, etc."
+          },
+          "response": []
+        },
+        {
+          "name": "Get dashboard period summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/cx/dashboard/period-summary?channel_filter={{channel_filter}}&account_filter={{account_filter}}&p_start_date={{p_start_date}}&p_end_date={{p_end_date}}&p_timezone={{p_timezone}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["cx", "dashboard", "period-summary"],
+              "query": [
+                {
+                  "key": "channel_filter",
+                  "value": "{{channel_filter}}"
+                },
+                {
+                  "key": "account_filter",
+                  "value": "{{account_filter}}"
+                },
+                {
+                  "key": "p_start_date",
+                  "value": "{{p_start_date}}"
+                },
+                {
+                  "key": "p_end_date",
+                  "value": "{{p_end_date}}"
+                },
+                {
+                  "key": "p_timezone",
+                  "value": "{{p_timezone}}"
+                }
+              ]
+            },
+            "description": "RPC: `cx_dashboard_period_summary_get`\n\n**Used by:** Reporting monitoring cards (users, inquiries, sessions, avg duration), QoE volume/sentiment, Answers quality stats.\n\n**Response:** Single row (or array with one element): `distinct_user_count`, `message_session_count`, `analysis_other_count`, `active_session_time_sum`, `chat_session_rating_*_count`, `total_upvote_message_count`, etc."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Search — Ajman HRD reports",
+      "description": "Proxied via `search-post` → PostgREST RPC.\n\n**Body:** `page` is 1-based. Response shape: `{ \"items\": [...], \"totalItems\": number }`.",
+      "item": [
+        {
+          "name": "Other questions (inquiries log)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"cx_report_other_questions\",\n  \"createdFrom\": \"{{p_start_date}}\",\n  \"createdTo\": \"{{p_end_date}}\",\n  \"page\": {{page}},\n  \"pageSize\": {{pageSize}},\n  \"searchString\": \"{{searchString}}\",\n  \"filter\": {\n    \"channelFilter\": \"{{channel_filter}}\",\n    \"accountFilter\": \"{{account_filter}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/search",
+              "host": ["{{baseUrl}}"],
+              "path": ["search"]
+            },
+            "description": "RPC: `cx_report_other_questions_get`\n\n**UI:** Inquiries → استفسارات غير مشمولة ضمن السياسات المعتمدة\n\n**Item fields:** `question`, `category`, `verdict`, `created_at`, `account_name`, `channel_name`"
+          },
+          "response": []
+        },
+        {
+          "name": "Questions categories (FAQ category chart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"cx_report_questions_categories\",\n  \"createdFrom\": \"{{p_start_date}}\",\n  \"createdTo\": \"{{p_end_date}}\",\n  \"page\": {{page}},\n  \"pageSize\": {{pageSize}},\n  \"searchString\": \"{{searchString}}\",\n  \"filter\": {\n    \"channelFilter\": \"{{channel_filter}}\",\n    \"accountFilter\": \"{{account_filter}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/search",
+              "host": ["{{baseUrl}}"],
+              "path": ["search"]
+            },
+            "description": "RPC: `cx_report_questions_categories_get`\n\n**UI:** Inquiries → الأسئلة الشائعة (category bar chart)\n\n**Item fields:** `category`, `frequency`"
+          },
+          "response": []
+        },
+        {
+          "name": "Message ratings (answers quality log)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"cx_report_message_ratings\",\n  \"createdFrom\": \"{{p_start_date}}\",\n  \"createdTo\": \"{{p_end_date}}\",\n  \"page\": {{page}},\n  \"pageSize\": {{pageSize}},\n  \"searchString\": \"{{searchString}}\",\n  \"filter\": {\n    \"channelFilter\": \"{{channel_filter}}\",\n    \"accountFilter\": \"{{account_filter}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/search",
+              "host": ["{{baseUrl}}"],
+              "path": ["search"]
+            },
+            "description": "RPC: `cx_report_message_ratings_get`\n\n**UI:** Inquiries → تقييم جودة الاجابات\n\n**Item fields:** `message_id`, `message_content`, `rating` (`upvote`|`downvote`), `created_at`, `account_name`, `channel_name`"
+          },
+          "response": []
+        },
+        {
+          "name": "Session satisfaction (QoE log)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"cx_report_session_satisfaction\",\n  \"createdFrom\": \"{{p_start_date}}\",\n  \"createdTo\": \"{{p_end_date}}\",\n  \"page\": {{page}},\n  \"pageSize\": {{pageSize}},\n  \"searchString\": \"{{searchString}}\",\n  \"filter\": {\n    \"channelFilter\": \"{{channel_filter}}\",\n    \"accountFilter\": \"{{account_filter}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/search",
+              "host": ["{{baseUrl}}"],
+              "path": ["search"]
+            },
+            "description": "RPC: `cx_report_session_satisfaction_get`\n\n**UI:** Inquiries → مؤشرات جودة التجربة ورضا المستفيدين (satisfaction table)\n\n**Item fields:** `feedback_text`, `feedback_rating` (1–5), `created_at`, `account_name`, `channel_name`"
+          },
+          "response": []
+        },
+        {
+          "name": "Conversation summaries (interim)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"cx_report_conversation_summaries\",\n  \"createdFrom\": \"{{p_start_date}}\",\n  \"createdTo\": \"{{p_end_date}}\",\n  \"page\": {{page}},\n  \"pageSize\": {{pageSize}},\n  \"searchString\": \"{{searchString}}\",\n  \"filter\": {\n    \"channelFilter\": \"{{channel_filter}}\",\n    \"accountFilter\": \"{{account_filter}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/search",
+              "host": ["{{baseUrl}}"],
+              "path": ["search"]
+            },
+            "description": "RPC: `cx_report_conversation_summaries_get`\n\n**UI:** Inquiries → ملخصات المحادثات– المساعد الذكي\n\n**Item fields:** `topic`, `path`, `summary`, `name`, `channel_name`, `created_at`"
+          },
+          "response": []
+        },
+        {
+          "name": "FAQ questions (table)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"cx_report_faq_questions\",\n  \"createdFrom\": \"{{p_start_date}}\",\n  \"createdTo\": \"{{p_end_date}}\",\n  \"page\": {{page}},\n  \"pageSize\": {{pageSize}},\n  \"searchString\": \"{{searchString}}\",\n  \"filter\": {\n    \"channelFilter\": \"{{channel_filter}}\",\n    \"accountFilter\": \"{{account_filter}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/search",
+              "host": ["{{baseUrl}}"],
+              "path": ["search"]
+            },
+            "description": "RPC: `cx_report_faq_questions_get`\n\n**UI:** Inquiries → الأسئلة الشائعة (FAQ table)\n\n**Item fields:** `question`, `source`, `satisfaction_pct`, `frequency`"
+          },
+          "response": []
+        },
+        {
+          "name": "Sources frequency (FAQ source chart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"cx_report_sources_frequency\",\n  \"createdFrom\": \"{{p_start_date}}\",\n  \"createdTo\": \"{{p_end_date}}\",\n  \"page\": {{page}},\n  \"pageSize\": {{pageSize}},\n  \"searchString\": \"{{searchString}}\",\n  \"filter\": {\n    \"channelFilter\": \"{{channel_filter}}\",\n    \"accountFilter\": \"{{account_filter}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/search",
+              "host": ["{{baseUrl}}"],
+              "path": ["search"]
+            },
+            "description": "RPC: `cx_report_sources_frequency_get`\n\n**UI:** Inquiries → الأسئلة الشائعة (document usage bar chart, top source stat)\n\n**Item fields:** `source`, `frequency`"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Related — Session settings",
+      "description": "Used by session ending time dialog (read-only in current UI).",
+      "item": [
+        {
+          "name": "Get AI agent (idle session TTL)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/cx/ai-agent?aiAgentId={{aiAgentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["cx", "ai-agent"],
+              "query": [
+                {
+                  "key": "aiAgentId",
+                  "value": "{{aiAgentId}}",
+                  "description": "AI agent UUID from channel config"
+                }
+              ]
+            },
+            "description": "Returns agent details including `idleSessionTTLInSeconds` for the session-ending-time settings dialog."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
