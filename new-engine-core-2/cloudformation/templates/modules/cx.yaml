@@ -296,6 +296,13 @@ Resources:
       ParentId: !Ref DashboardResource
       PathPart: 'metrics'
 
+  PeriodSummaryResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref CoreApi
+      ParentId: !Ref DashboardResource
+      PathPart: 'period-summary'
+
   # =================================================================
   # SQS Response Analyst
   # =================================================================
@@ -1147,6 +1154,49 @@ Resources:
     Properties:
       RestApiId: !Ref CoreApi
       ResourceId: !Ref MetricsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-Target,ApiKey,apikey,Prefer,X-Shared-Token'"
+            ResponseTemplates:
+              application/json: ""
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+
+  DashboardPeriodSummaryGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref PeriodSummaryResource
+      HttpMethod: GET
+      ApiKeyRequired: false
+      AuthorizationType: 'CUSTOM'
+      AuthorizerId: !Ref JwtTokenAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        Credentials: !Ref ApiGatewayLambdaExecutionRole
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction}/invocations
+          - LambdaFunction: !Ref DBProxyLambdaArn
+
+  OptionsDashboardPeriodSummaryApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref CoreApi
+      ResourceId: !Ref PeriodSummaryResource
       HttpMethod: OPTIONS
       AuthorizationType: NONE
       Integration:

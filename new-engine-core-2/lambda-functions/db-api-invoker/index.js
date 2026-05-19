@@ -124,6 +124,8 @@ export const handler = middy(async (event, context) => {
         // Dashboard/Reports (CX Module)
         case `GET/cx/dashboard/metrics`:
             return dbApi.callRest('rpc/cx_dashboard_metrics_group_get', true);
+        case `GET/cx/dashboard/period-summary`:
+            return dbApi.callRest('rpc/cx_dashboard_period_summary_get', true);
         case `GET/cx/dashboard/360-statuses`:
             return dbApi.callRest('rpc/cx_dashboard_360_statuses_group_get', true);
 

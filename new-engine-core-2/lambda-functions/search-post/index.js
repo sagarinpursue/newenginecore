@@ -70,6 +70,11 @@ const RESOURCE_TYPE_TABLES = {
     cx_report_other_questions: 'rpc/cx_report_other_questions_get',
     cx_report_questions_categories: 'rpc/cx_report_questions_categories_get',
     cx_report_failed_deliveries: 'rpc/cx_report_failed_deliveries_get',
+    cx_report_message_ratings: 'rpc/cx_report_message_ratings_get',
+    cx_report_session_satisfaction: 'rpc/cx_report_session_satisfaction_get',
+    cx_report_conversation_summaries: 'rpc/cx_report_conversation_summaries_get',
+    cx_report_faq_questions: 'rpc/cx_report_faq_questions_get',
+    cx_report_sources_frequency: 'rpc/cx_report_sources_frequency_get',
 };
 
 export const handler = middy(async (event, context) => {

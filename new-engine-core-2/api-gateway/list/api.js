@@ -351,6 +351,13 @@ export default (config) => {
                     proxy: true,
                 },
             },
+            'cx/dashboard/period-summary': {
+                get: {
+                    lambda: config.aws.lambda.dbApiInvoker,
+                    auth: ['JwtTokenAuthorizer'],
+                    proxy: true,
+                },
+            },
             'cx/chat': {
                 get: {
                     lambda: config.aws.lambda.dbApiInvoker,

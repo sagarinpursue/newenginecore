@@ -9,6 +9,8 @@ CREATE OR REPLACE FUNCTION cx_report_other_questions_get(
 )
 RETURNS TABLE(
     question TEXT,
+    category TEXT,
+    verdict TEXT,
     created_at TIMESTAMPTZ,
     account_name TEXT,
     channel_name TEXT
@@ -18,6 +20,8 @@ SECURITY DEFINER
 AS $$
     SELECT
         cma.question,
+        cma.category,
+        cma.verdict::TEXT,
         cma.created_at,
         ac.account_name_en,
         ch.name
